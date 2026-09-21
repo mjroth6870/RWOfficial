@@ -78,6 +78,9 @@ button[disabled],input[disabled]{cursor:not-allowed}
 .tab[aria-selected="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .tab.jt{min-width:44px;padding:0;justify-content:center;font:700 22px/1 var(--cond)}
 .tabs .grp{flex:none;margin:0 2px 0 10px;padding-left:12px;border-left:2px solid var(--line-strong);color:var(--muted);font-weight:600;font-size:14px}
+.rf-opts.pz-opt{margin-top:10px}
+.tab[disabled]{background:var(--off-bg);color:var(--off-ink);border-color:var(--off-bg);cursor:not-allowed}
+.tab[disabled]:hover{border-color:var(--off-bg)}
 .tab.jt.off{background:var(--off-bg);color:var(--off-ink);border-color:var(--off-bg)}
 .tab.jt.off:hover{border-color:var(--line-strong)}
 .tab.jt.off[aria-selected="true"]{background:var(--off-ink);color:var(--bg);border-color:var(--off-ink)}
@@ -3059,7 +3062,7 @@ function fmtDate(s){
 /* ================================================================
    State
    ================================================================ */
-var MEET_KEYS = ['name', 'date', 'distance', 'location', 'courseLength', 'courseCert', 'raceMode', 'meetType', 'useHip', 'useBib', 'keys', 'shareLink', 'statuses', 'divCount', 'divisions'];               // shared by every race
+var MEET_KEYS = ['name', 'date', 'distance', 'location', 'courseLength', 'courseCert', 'raceMode', 'meetType', 'useHip', 'useBib', 'usePZ', 'keys', 'shareLink', 'statuses', 'divCount', 'divisions'];               // shared by every race
 var RACE_KEYS = ['recorder', 'recorderCert', 'judges', 'active', 'supervisory', 'last100', 'athletes', 'dq', 'pit'];  // one set per race
 
 function blankMeet(){
@@ -3067,7 +3070,7 @@ function blankMeet(){
   for (var k = 0; k < MAXDIV; k++) dv.push({name:'', heats:1, custom:false});
   var ks = [];
   for (var q = 0; q < NJ; q++) ks.push('');
-  return {name:'', date:'', distance:'', location:'', courseLength:'', courseCert:'', raceMode:'combined', meetType:'', useHip:true, useBib:true, keys:ks, shareLink:'', statuses:{}, divCount:2, divisions:dv};
+  return {name:'', date:'', distance:'', location:'', courseLength:'', courseCert:'', raceMode:'combined', meetType:'', useHip:true, useBib:true, usePZ:false, keys:ks, shareLink:'', statuses:{}, divCount:2, divisions:dv};
 }
 function blankRace(){
   var j = [], on = [];
@@ -3275,6 +3278,7 @@ function normMeet(d){
   e.meetType = TYPE_INFO.hasOwnProperty(d.meetType) ? d.meetType : '';
   e.useHip = d.useHip !== false; e.useBib = d.useBib !== false;   // how athletes are identified; at least one is always on
   if (!e.useHip && !e.useBib) e.useHip = true;
+  e.usePZ = d.usePZ === true;                 // the Penalty Zone tab is off unless the Recorder turns it on
   for (var kk = 0; kk < NJ; kk++) e.keys[kk] = Array.isArray(d.keys) ? str(d.keys[kk]).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12) : '';
   e.shareLink = str(d.shareLink);
   e.statuses = {};
@@ -3978,6 +3982,7 @@ function fitGrid(){
 }
 function render(){
   if (S.screen !== 'meet') { renderAccount(); return; }
+  if (S.tab === 'penalty' && S.started && !usePZ()) { S.tab = 'recorder'; LS.set(KEY + 'tab', S.tab); }     // turned off while it was open
   var ui = captureUI();
   renderHeader(); renderNav(); renderRaceBar(); renderView();
   fitGrid();
@@ -4005,7 +4010,8 @@ function renderPill(){
 }
 
 /* ---------- Tabs ---------- */
-function validTab(t){ return t === 'howto' || t === 'setup' || t === 'recorder' || t === 'redcards' || /^j(1[01]|[1-9])$/.test(t || ''); }
+function usePZ(){ return S.event.usePZ === true; }
+function validTab(t){ return t === 'howto' || t === 'setup' || t === 'recorder' || t === 'redcards' || t === 'penalty' || /^j(1[01]|[1-9])$/.test(t || ''); }
 function jtabHTML(n){
   var nm = S.event.judges[n - 1].name, on = isActive(n);
   return '<button class="tab jt' + (on ? '' : ' off') + '" role="tab" aria-selected="' + (S.tab === 'j' + n) + '" data-act="tab" data-tab="j' + n + '" aria-label="' + jtitle(n) + (nm ? ', ' + esc(nm) : '') + (on ? (chiefSheet(n) ? ', supervisory official' : '') : ', not active in this race') + '" title="' + esc((nm || jtitle(n)) + (on ? (chiefSheet(n) ? ' (supervisory)' : '') : ' (not active)')) + '">' + jtag(n) + '</button>';
@@ -4018,9 +4024,10 @@ function renderNav(){
     return;
   }
   var nRC = S.event.athletes.filter(function(a){ return redCount(a.id) > 0; }).length;
-  var base = [['howto','How To'], ['setup','Setup'], ['recorder','Recorder'], ['redcards','Red Cards']];
+  var base = [['howto','How To'], ['setup','Setup'], ['recorder','Recorder'], ['redcards','Red Cards'], ['penalty','Penalty Zone']];
   var homeBtn = S.acct && S.screen === 'meet' ? '<button type="button" class="tab homebtn" data-act="home" title="Back to your meets">&lsaquo; My meets</button>' : '';
   var h = '<div class="tabrow">' + homeBtn + base.map(function(t){
+    if (t[0] === 'penalty' && !usePZ()) return '<button type="button" class="tab" role="tab" aria-selected="false" aria-disabled="true" disabled title="Turn on Penalty Zone under Race format on the Setup tab">' + t[1] + '</button>';
     var badge = t[0] === 'redcards' && nRC ? '<span class="badge" title="Athletes with red cards">' + nRC + '</span>' : '';
     return '<button class="tab" role="tab" aria-selected="' + (S.tab === t[0]) + '" data-act="tab" data-tab="' + t[0] + '">' + t[1] + badge + '</button>';
   }).join('');
@@ -4078,12 +4085,20 @@ function go(id, fromHash){
 }
 
 /* ---------- Views ---------- */
+function penaltyHTML(){
+  var pit = S.event.pit;
+  if (!usePZ()) return '<section class="band"><h2 class="sec-h">Penalty Zone</h2><p class="off-note">Penalty Zone is off. Turn it on under Race format on the Setup tab.</p></section>';
+  return '<section class="band"><h2 class="sec-h">Penalty Zone</h2>' +
+    '<p class="lead">Penalty Zone is on for this meet. Nothing is recorded here yet.</p>' +
+    '<p class="off-note">' + (pit > 0 ? 'Athletes are sent to the Penalty Zone at ' + pit + ' red card' + (pit === 1 ? '' : 's') + '. Change this in the Race section of the Setup tab.' : 'No red card count is set for the Penalty Zone. Set one in the Race section of the Setup tab.') + '</p></section>';
+}
 function renderView(){
   var html;
   if (S.tab === 'howto') html = howtoHTML();
   else if (S.tab === 'setup') html = setupHTML();
   else if (S.tab === 'recorder') html = recorderHTML();
   else if (S.tab === 'redcards') html = redcardsHTML();
+  else if (S.tab === 'penalty') html = penaltyHTML();
   else html = judgeHTML(+S.tab.slice(1));
   setHTML($('#view'), html);
 }
@@ -4105,6 +4120,7 @@ function howtoHTML(){
       '<li>If the Chief Judge is judging, check Last 100m red card beside it instead. Judge 1 then has a separate last 100m red card and time of day under their normal red card, and using it disqualifies the athlete. It cannot be checked while Supervisory official only is on.</li>' +
       '<li>Under Judges in this race, turn on the judges working this race. Judges who are off are grey, and are hidden from the Recorder and Red Cards tabs and from exports.</li>' +
       '<li>Set how many red cards send an athlete to the Penalty Zone or result in a DQ. The default is a DQ at 3.</li>' +
+      '<li>Under Race format, check Penalty Zone to turn on the Penalty Zone tab, next to Red Cards. The tab stays greyed out until then.</li>' +
       '<li>Load sample race and Clear all judge entries are at the bottom of the Setup tab.</li>' +
     '</ul></section>' +
 
@@ -4443,7 +4459,8 @@ function raceFormatHTML(){
     return '<label class="chk"><input type="checkbox" data-act="meet-type" data-v="' + v + '" data-f="mt:' + v + '"' + (ev.meetType === v ? ' checked' : '') + dis + '><span>' + TYPE_NAMES[v] + '</span></label>';
   }
   var h = '<div class="rformat noprint"><div class="jp-head"><span class="jp-title" id="rf-t">Race format</span></div>' +
-    '<div class="rf-opts" role="group" aria-labelledby="rf-t">' + opt('combined', 'Combined race') + opt('heats', 'Separate heats by divisions') + '</div>';
+    '<div class="rf-opts" role="group" aria-labelledby="rf-t">' + opt('combined', 'Combined race') + opt('heats', 'Separate heats by divisions') + '</div>' +
+    '<div class="rf-opts pz-opt" role="group" aria-label="Penalty Zone"><label class="chk"><input type="checkbox" data-act="pz-opt" data-f="pz:opt"' + (usePZ() ? ' checked' : '') + dis + '><span>Penalty Zone<small>Turns on the Penalty Zone tab, next to Red Cards.</small></span></label></div>';
   if (heats) {
     h += '<div class="rf-div">' +
       '<div class="mt-group"><div class="jp-head"><span class="jp-title" id="mt-t">Meet type</span></div>' +
@@ -5257,6 +5274,13 @@ document.addEventListener('click', function(e){
     case 'pdf': openPdfDialog(b.dataset.k); break;
     case 'rc-sort': S.rcSort = b.dataset.v; render(); break;
     case 'rc-only': S.rcOnly = !S.rcOnly; render(); break;
+    case 'pz-opt': {
+      if (ro()) break;
+      S.event.usePZ = !S.event.usePZ;
+      queueMeet(200); render();
+      b.checked = S.event.usePZ;
+      break;
+    }
     case 'id-opt': {
       if (ro()) break;
       var idk = b.dataset.v === 'hip' ? 'useHip' : 'useBib', idother = idk === 'useHip' ? 'useBib' : 'useHip';
