@@ -181,6 +181,52 @@ main{padding:0 16px 56px}
 .apick[disabled]{opacity:.5;cursor:not-allowed}
 .apick.pzm{min-width:64px}
 .pzm-line{display:flex;align-items:center;gap:10px;margin:8px 0}
+.pz-times{margin:14px 0 10px}
+.pz-opts{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 6px}
+.pz-opt{min-height:44px;padding:0 14px;border:2px solid var(--line-strong);border-radius:8px;background:var(--surface);font-weight:700}
+.pz-opt:hover:not([disabled]){border-color:var(--ink)}
+.pz-opt[aria-checked="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.pz-opt[disabled]{opacity:.55;cursor:not-allowed}
+.pz-h{margin:16px 0 4px;font-size:16px;display:flex;align-items:center;gap:8px}
+.pz-setup{margin:8px 0 12px}
+.pzlist{list-style:none;margin:8px 0 4px;padding:0;display:grid;gap:8px}
+.pzrow{display:grid;grid-template-columns:minmax(200px,1.2fr) auto 150px auto;gap:12px;align-items:center;padding:10px 12px;background:var(--surface);border:1px solid var(--line);border-left:6px solid var(--line-strong);border-radius:10px}
+.pzrow.run,.pzrow.time{border-left-color:var(--ink)}
+.pzrow.time{border-left-color:var(--ink)}
+.pzrow.served{border-left-color:var(--green)}
+.pzrow.dq{background:var(--red-soft);border-left-color:var(--red)}
+.pz-who .jw{display:block}
+.pz-meta{display:block;margin-top:2px;color:var(--muted);font-size:14px}
+.pz-box{display:flex;gap:10px}
+.pz-box .pz-tfld{flex:0 0 176px;min-width:176px}
+.pz-tfld .tin{font-size:18px;padding:0 6px;letter-spacing:0}
+.pz-in{font-variant-numeric:tabular-nums}
+.pz-t{display:grid;justify-items:center;gap:4px;min-height:44px;align-content:center}
+.pz-cd{display:inline-block;min-width:92px;padding:8px 12px;border-radius:8px;background:var(--surface-2);border:1px solid var(--line-strong);text-align:center;font:700 30px/1 var(--cond);font-variant-numeric:tabular-nums}
+.pz-cd.warn{background:var(--yellow);color:var(--on-yellow);border-color:var(--yellow)}
+.pz-cd.done{background:var(--ink);color:var(--bg);border-color:var(--ink)}      /* time is up: not yellow, which is only for the last 10 seconds */
+.pz-st,.pz-el{font-size:13px;color:var(--muted);text-align:center}
+.pz-chk{white-space:nowrap}
+@media (max-width:1100px){      /* not enough room for four columns: the athlete and Penalty Served on one line, then the times, then the countdown */
+  .pzrow{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"who served" "box box" "timer timer"}
+  .pz-who{grid-area:who;min-width:0}
+  .pz-n{grid-area:served}
+  .pz-box{grid-area:box}
+  .pz-t{grid-area:timer;display:flex;align-items:center;justify-content:flex-start;gap:12px;min-height:0}
+  .pz-t:empty{display:none}
+  .pz-st,.pz-el{text-align:left}
+  .pz-box .pz-tfld{flex:1 1 0;min-width:0}
+}
+@media (max-width:720px){       /* phones: the athlete gets the full width, the countdown and Penalty Served share the last line */
+  .pzrow{grid-template-areas:"who who" "box box" "timer served"}
+}
+@media (max-width:480px){
+  .pzrow{grid-template-columns:minmax(0,1fr);grid-template-areas:"who" "box" "timer" "served"}
+  .pz-box{flex-direction:column}
+  .pz-box .pz-tfld{flex:none;width:100%}
+  .pz-n .chk{width:100%}
+}
+}
 .jn.ac{font-size:26px}
 .jchip.ac{font-size:11px;letter-spacing:-.03em;padding:0 2px}
 .jrow.ac{grid-template-columns:minmax(240px,1.3fr) minmax(200px,1fr)}
@@ -3324,17 +3370,17 @@ function normEntries(d){
   var out = {}, src = d && d.entries && typeof d.entries === 'object' ? d.entries : {};
   Object.keys(src).forEach(function(aid){
     var e = src[aid] || {};
-    var o = {y1:digits(e.y1), y2:digits(e.y2), rc:(e.rc === '>' || e.rc === '~') ? e.rc : '', rt:digits(e.rt), dn:digits(e.dn), lc:(e.lc === '>' || e.lc === '~') ? e.lc : '', lt:digits(e.lt)};
-    if (o.y1 || o.y2 || o.rc || o.rt || o.dn || o.lc || o.lt) out[aid] = o;
+    var o = {y1:digits(e.y1), y2:digits(e.y2), rc:(e.rc === '>' || e.rc === '~') ? e.rc : '', rt:digits(e.rt), dn:digits(e.dn), lc:(e.lc === '>' || e.lc === '~') ? e.lc : '', lt:digits(e.lt), pza:big(e.pza), pzr:big(e.pzr), pzd:digits(e.pzd), pzv:e.pzv ? '1' : ''};      // big(): a timestamp is 13 digits, more than digits() keeps
+    if (o.y1 || o.y2 || o.rc || o.rt || o.dn || o.lc || o.lt || o.pza || o.pzr || o.pzd || o.pzv) out[aid] = o;
   });
   return out;
 }
 function pruned(n, id){ return normEntries({entries:rc(id || S.raceId).entries[n]}); }
 function pick(o, keys){ var r = {}; keys.forEach(function(k){ r[k] = o[k]; }); return JSON.parse(JSON.stringify(r)); }
 
-var BLANK = {y1:'', y2:'', rc:'', rt:'', dn:'', lc:'', lt:''};
+var BLANK = {y1:'', y2:'', rc:'', rt:'', dn:'', lc:'', lt:'', pza:'', pzr:'', pzd:'', pzv:''};
 function getEntry(n, aid){ return S.entries[n][aid] || BLANK; }
-function ent(n, aid){ return S.entries[n][aid] || (S.entries[n][aid] = {y1:'', y2:'', rc:'', rt:'', dn:'', lc:'', lt:''}); }
+function ent(n, aid){ return S.entries[n][aid] || (S.entries[n][aid] = {y1:'', y2:'', rc:'', rt:'', dn:'', lc:'', lt:'', pza:'', pzr:'', pzd:'', pzv:''}); }
 function findAth(id){ for (var i = 0; i < S.event.athletes.length; i++) if (S.event.athletes[i].id === id) return S.event.athletes[i]; return null; }
 function redCount(aid){ var c = 0; for (var n = 1; n <= NMAIN; n++) { if (!isActive(n)) continue; var e = S.entries[n][aid]; if (e && (e.rc || (n === 1 && l100On() && e.lc))) c++; } return c; }   // a judge counts once, even with both a red card and a last 100m card
 function status(c, aid){
@@ -4022,6 +4068,133 @@ function renderPill(){
 
 /* ---------- Tabs ---------- */
 function usePZ(){ return S.event.usePZ === true; }
+
+/* ---------- Penalty Zone ----------
+   Kept with the Penalty Zone Manager's entries (position 12), so the Recorder and the PZM can both use the tab and every device sees it.
+   Each athlete's entry holds when they arrived (pza) and when they were released (pzr), as milliseconds, how long their penalty is
+   (pzd, seconds, fixed when they arrive) and whether it is marked served (pzv). The penalty time chosen for the race is kept under a
+   reserved key. Time left is worked out from the device clock, so it is never stored. */
+var PZ_KEY = '_pz', PZ_TIMES = [30, 60, 120, 180, 240, 300];
+function big(v){ return str(v).replace(/\D/g, '').slice(0, 14); }
+function pzTime(){ return +getEntry(PZM, PZ_KEY).pzd || 0; }              // seconds; 0 = none chosen yet
+// wait: not arrived. run: counting down. time: time is up, not released. rel: released, not marked served. served.
+function pzState(aid, now){
+  var e = getEntry(PZM, aid), a = +e.pza || 0, r = +e.pzr || 0, d = +e.pzd || 0, served = !!e.pzv, end = a && d ? a + d * 1000 : 0;
+  var state = served ? 'served' : r ? 'rel' : !a ? 'wait' : (end && end <= now) ? 'time' : 'run';
+  return {state:state, a:a, r:r, d:d, end:end, left:end ? end - now : 0, served:served};
+}
+function pzServed(aid){ return usePZ() && !!getEntry(PZM, aid).pzv; }
+function pzFmt(ms){ var t = Math.max(0, Math.ceil(ms / 1000)); return Math.floor(t / 60) + ':' + ('0' + (t % 60)).slice(-2); }
+function pzDur(ms){ var t = Math.max(0, Math.floor(ms / 1000)); return Math.floor(t / 60) + ':' + ('0' + (t % 60)).slice(-2); }
+function pzLabel(sec){ return sec < 60 ? sec + ' seconds' : (sec / 60) + (sec === 60 ? ' minute' : ' minutes'); }
+function pzClock(ms){ var d = new Date(+ms); function p(n){ return ('0' + n).slice(-2); } return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()); }
+// A typed time (H MM, HHMM or HHMMSS, colons allowed) as today's date at that time. 0 = empty, -1 = not a time.
+function pzParse(txt){
+  var t = str(txt).replace(/\D/g, ''), h, m, sec = 0;
+  if (!t) return 0;
+  if (t.length === 3) { h = +t.slice(0, 1); m = +t.slice(1); }
+  else if (t.length === 4) { h = +t.slice(0, 2); m = +t.slice(2); }
+  else if (t.length === 6) { h = +t.slice(0, 2); m = +t.slice(2, 4); sec = +t.slice(4); }
+  else return -1;
+  if (h > 23 || m > 59 || sec > 59) return -1;
+  var d = new Date(); d.setHours(h, m, sec, 0); return d.getTime();
+}
+function ordinal(n){ var t = ['th', 'st', 'nd', 'rd'], v = n % 100; return n + (t[(v - 20) % 10] || t[v] || t[0]); }
+// Athletes shown on the Penalty Zone tab: everyone who has reached the Penalty Zone red card count, plus anyone with a time recorded.
+function pzAthletes(){
+  var pit = S.event.pit, now = Date.now(), out = [];
+  S.event.athletes.forEach(function(a, i){
+    var c = redCount(a.id), st = pzState(a.id, now);
+    if ((pit > 0 && c >= pit) || st.a || st.r || st.served) out.push({a:a, c:c, st:st, i:i, dq:status(c, a.id) === 'dq'});
+  });
+  return out;
+}
+function pzGroups(rows){
+  var g = {todo:[], served:[], dq:[]};
+  rows.forEach(function(r){ (r.st.served ? g.served : r.dq ? g.dq : g.todo).push(r); });
+  g.todo.sort(function(x, y){ return (x.st.a && !y.st.a ? -1 : !x.st.a && y.st.a ? 1 : 0) || (x.st.a && y.st.a ? x.st.a - y.st.a : 0) || x.i - y.i; });      // counting down first, by arrival; then those waiting
+  g.served.sort(function(x, y){ return (x.st.a || 0) - (y.st.a || 0) || x.i - y.i; });
+  return g;
+}
+// The chips beside an athlete's red card count. With Penalty Zone on, PZ means the penalty has been served, and DQ can join it later.
+function stChips(aid, st){
+  var h = '';
+  if (usePZ()) { if (pzServed(aid)) h += '<em class="stx pit" title="Penalty served">PZ</em>'; }
+  else if (st === 'pit') h += '<em class="stx pit" title="Penalty Zone">PZ</em>';
+  if (st === 'dq') h += '<em class="stx dq"' + (chiefDQ(aid) ? ' title="Disqualified by the Chief Judge in the last 100 m"' : '') + '>DQ</em>';
+  return h;
+}
+function stLabels(aid, st){
+  var l = [];
+  if (usePZ()) { if (pzServed(aid)) l.push('PZ'); } else if (st === 'pit') l.push('PZ');
+  if (st === 'dq') l.push('DQ');
+  return l;
+}
+// Once a second: update the countdowns on screen without redrawing the tab. Yellow for the last 10 seconds.
+function pzTick(){
+  if (S.screen !== 'meet' || !S.started || S.tab !== 'penalty') return;
+  var now = Date.now(), cds = document.querySelectorAll('.pz-cd[data-end]');
+  for (var i = 0; i < cds.length; i++) {
+    var left = +cds[i].getAttribute('data-end') - now, up = left <= 0, txt = up ? '0:00' : pzFmt(left), row = cds[i].closest('.pzrow'), st = row && row.querySelector('.pz-st');
+    if (cds[i].textContent !== txt) cds[i].textContent = txt;
+    cds[i].classList.toggle('warn', !up && left <= 10000);
+    cds[i].classList.toggle('done', up);
+    if (row) { row.classList.toggle('run', !up); row.classList.toggle('time', up); }
+    if (st) st.textContent = up ? 'Time is up: release the athlete' : 'Serving';
+  }
+}
+setInterval(pzTick, 250);
+function pzRelease(aid, ms){ var e = ent(PZM, aid); e.pzr = String(ms); e.pzv = '1'; queueEntries(PZM, 60); render(); }
+function pzClearArrival(aid){
+  var e = ent(PZM, aid), a = findAth(aid);
+  var clear = function(){ e.pza = ''; e.pzd = ''; e.pzr = ''; e.pzv = ''; queueEntries(PZM, 60); render(); };
+  if (e.pzr || e.pzv) confirmDlg('Clear the arrival time?', 'This also clears the release time and Penalty Served for ' + esc(a ? athLabel(a) : 'this athlete') + '.', 'Clear', clear); else clear();
+}
+// A time typed into an Arrived or Released box.
+function pzTyped(t){
+  if (roEnt()) { render(); return; }
+  var aid = t.dataset.aid, k = t.dataset.k, e = ent(PZM, aid), ms = pzParse(t.value);
+  if (ms === -1) { toast('Enter a time as HHMM or HHMMSS.'); render(); return; }
+  if (k === 'a') {
+    if (!ms) { pzClearArrival(aid); render(); return; }
+    if (!e.pza && !raceOpen()) { toast('The race must be open to record an arrival.'); render(); return; }
+    if (!pzTime() && !e.pzd) { toast('Choose a penalty time first.'); render(); return; }
+    e.pza = String(ms); if (!e.pzd) e.pzd = String(pzTime());
+    if (e.pzr && +e.pzr < ms) { e.pzr = ''; e.pzv = ''; }
+  } else if (!ms) { e.pzr = ''; e.pzv = ''; }
+  else {
+    if (!e.pza) { toast('Record the arrival first.'); render(); return; }
+    if (ms < +e.pza) { toast('The release cannot be before the arrival.'); render(); return; }
+    e.pzr = String(ms); e.pzv = '1';
+  }
+  queueEntries(PZM, 60); render();
+}
+// One Arrived or Released box: the time as HH:MM:SS, with the clock button that becomes a clear button once a time is set.
+function pzTimeBox(r, k, val, canStart, sel){
+  var st = r.st, lab = k === 'a' ? 'Arrived' : 'Released', ro_ = roEnt(), dis, why;
+  if (k === 'a') { dis = ro_ || (!val && (r.dq || !sel || !canStart)); why = val ? 'Clear the arrival time' : r.dq ? 'This athlete is disqualified.' : !sel ? 'Choose a penalty time first.' : !canStart ? 'Arrivals can be recorded once the race is open.' : 'Use the current time as the arrival time and start the countdown'; }
+  else { dis = ro_ || (!val && !st.a); why = val ? 'Clear the release time' : !st.a ? 'Record the arrival first.' : 'Release the athlete now'; }
+  var name = esc(athTag(r.a) + ' ' + r.a.name);
+  return '<div class="fld pz-tfld"><span class="lb lr">' + lab + '</span><div class="tf tr' + (val ? ' filled' : '') + '">' +
+    '<input class="tin pz-in" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="HH:MM:SS" value="' + (val ? pzClock(val) : '') + '" data-bind="pz" data-aid="' + r.a.id + '" data-k="' + k + '" data-f="pzin:' + r.a.id + ':' + k + '" aria-label="' + lab + ' time for ' + name + '"' + (ro_ || (k === 'r' && !st.a) ? ' disabled' : '') + '>' +
+    '<button type="button" class="stamp" data-act="pz-stamp" data-aid="' + r.a.id + '" data-k="' + k + '" data-f="pzst:' + r.a.id + ':' + k + '" aria-label="' + esc(why) + '" title="' + esc(why) + '"' + (dis ? ' disabled' : '') + '>' + (val ? ICON_X : ICON_CLOCK) + '</button></div></div>';
+}
+function pzRowHTML(r, sel, canStart){
+  var a = r.a, st = r.st, cd = '';
+  if (st.a && !st.r && !st.served) {
+    var up = st.left <= 0;
+    cd = '<span class="pz-cd' + (up ? ' done' : st.left <= 10000 ? ' warn' : '') + '" role="timer" data-end="' + st.end + '">' + (up ? '0:00' : pzFmt(st.left)) + '</span>' +
+      '<span class="pz-st">' + (up ? 'Time is up: release the athlete' : 'Serving') + '</span>';
+  } else if (st.a && st.r) cd = '<span class="pz-el">In the zone ' + pzDur(st.r - st.a) + '</span>';
+  var served = '<label class="chk pz-chk"><input type="checkbox" data-act="pz-served" data-aid="' + a.id + '" data-f="pzv:' + a.id + '"' + (st.served ? ' checked' : '') + (roEnt() ? ' disabled' : '') + '><span>Penalty Served</span></label>';
+  return '<li class="pzrow ' + st.state + (r.dq ? ' dq' : '') + '" data-aid="' + a.id + '"><div class="pz-who">' + whoHTML(a) +
+    '<span class="pz-meta">' + r.c + ' red card' + (r.c === 1 ? '' : 's') + (r.dq ? ' <em class="stx dq">DQ</em>' : '') + '</span></div>' +
+    '<div class="pz-box">' + pzTimeBox(r, 'a', st.a, canStart, sel) + pzTimeBox(r, 'r', st.r, canStart, sel) + '</div>' +
+    '<div class="pz-t">' + cd + '</div><div class="pz-n">' + served + '</div></li>';
+}
+function pzSection(title, rows, sel, canStart){
+  return rows.length ? '<h3 class="pz-h">' + title + '<span class="count">' + rows.length + '</span></h3><ul class="pzlist" aria-label="' + title + '">' + rows.map(function(r){ return pzRowHTML(r, sel, canStart); }).join('') + '</ul>' : '';
+}
 function validTab(t){ return t === 'howto' || t === 'setup' || t === 'recorder' || t === 'redcards' || t === 'penalty' || /^j(1[01]|[1-9])$/.test(t || ''); }
 function jtabHTML(n){
   var nm = S.event.judges[n - 1].name, on = isActive(n);
@@ -4099,13 +4272,26 @@ function go(id, fromHash){
 function penaltyHTML(){
   var pit = S.event.pit;
   if (!usePZ()) return '<section class="band"><h2 class="sec-h">Penalty Zone</h2><p class="off-note">Penalty Zone is off. Turn it on under Race format on the Setup tab.</p></section>';
-  var j = S.event.judges[PZM - 1], on = isActive(PZM);
+  var j = S.event.judges[PZM - 1], on = isActive(PZM), sel = pzTime(), canOp = !roEnt(), canStart = canOp && raceOpen();
   var mgr = on
     ? '<p class="pzm-line"><span class="jchip ac">PZM</span><span><b>Penalty Zone Manager</b>' + (j.name ? ': ' + esc(j.name) + (j.cert ? ', ' + esc(j.cert) : '') : ' (name and cert are set on the Setup tab)') + '</span></p>' + qrPanelHTML(PZM)
     : '<p class="off-note">' + (S.official ? 'The Penalty Zone Manager is not on for this race.' : 'The Penalty Zone Manager (PZM) is off for this race. The Recorder turns it on under Judges in this race on the Setup tab.') + '</p>';
-  return '<section class="band"><h2 class="sec-h">Penalty Zone</h2>' +
-    '<p class="lead">Penalty Zone is on for this meet. Nothing is recorded here yet.</p>' + mgr +
-    '<p class="off-note">' + (pit > 0 ? 'Athletes are sent to the Penalty Zone at ' + pit + ' red card' + (pit === 1 ? '' : 's') + '. Change this in the Race section of the Setup tab.' : 'No red card count is set for the Penalty Zone. Set one in the Race section of the Setup tab.') + '</p></section>';
+  var h = '<section class="band"><h2 class="sec-h">Penalty Zone</h2>';
+  // the red card counts that send an athlete here
+  var bad = !(pit > 0) ? 'No red card count is set for the Penalty Zone, so no athletes will appear here yet.' : S.event.dq <= pit ? 'The DQ count (' + S.event.dq + ') is not above the Penalty Zone count (' + pit + '), so athletes are disqualified instead of being sent to the Penalty Zone.' : '';
+  if (bad) h += '<div class="pz-setup"><p class="warn">' + bad + '</p>' + (!ro() ? '<button type="button" class="btn sm" data-act="pz-preset">' + (pit > 0 ? 'Set DQ to ' + (pit + 1) + ' red cards' : 'Set Penalty Zone at 3 red cards and DQ at 4') + '</button>' : '<p class="off-note">Ask the Recorder to set them in the Race section of the Setup tab.</p>') + '</div>';
+  else h += '<p class="off-note">Athletes appear here when they receive their ' + ordinal(pit) + ' red card. Change this in the Race section of the Setup tab.</p>';
+  // the countdown time for this race
+  h += '<div class="pz-times noprint"><span class="jp-title" id="pz-tt">Countdown time for this race</span>' +
+    '<div class="pz-opts" role="radiogroup" aria-labelledby="pz-tt">' + PZ_TIMES.map(function(t){
+      return '<button type="button" class="pz-opt" role="radio" aria-checked="' + (sel === t) + '" data-act="pz-time" data-v="' + t + '" data-f="pz:t:' + t + '"' + (canOp ? '' : ' disabled') + '>' + pzLabel(t) + '</button>';
+    }).join('') + '</div>' +
+    '<p class="rf-note">' + (sel ? 'Arrivals start a ' + pzLabel(sel) + ' countdown. One already counting down keeps its length.' : 'Choose a countdown time. Arrivals cannot be recorded until you do.') + (canOp && !raceOpen() ? ' Arrivals can be recorded once the race is open.' : '') + '</p></div>';
+  var g = pzGroups(pzAthletes());
+  h += g.todo.length + g.served.length + g.dq.length
+    ? pzSection('Waiting or serving', g.todo, sel, canStart) + pzSection('Served', g.served, sel, canStart) + pzSection('Disqualified before serving', g.dq, sel, canStart)
+    : '<p class="off-note">No athletes are in the Penalty Zone yet.</p>';
+  return h + mgr + '</section>';
 }
 function renderView(){
   var html;
@@ -4136,13 +4322,14 @@ function howtoHTML(){
       '<li>Under Judges in this race, turn on the judges working this race. Judges who are off are grey, and are hidden from the Recorder and Red Cards tabs and from exports.</li>' +
       '<li>Set how many red cards send an athlete to the Penalty Zone or result in a DQ. The default is a DQ at 3.</li>' +
       '<li>Under Race format, check Penalty Zone to turn on the Penalty Zone tab, next to Red Cards. The tab stays greyed out until then. Once it is on, PZM (Penalty Zone Manager) can be turned on under Judges in this race. The PZM gets a QR code, shown on the Penalty Zone tab, that opens only that tab on their own device.</li>' +
+      '<li>On the Penalty Zone tab, choose the countdown time for the race: 30 seconds, or 1 to 5 minutes. Athletes appear there when they receive the red card that sends them to the Penalty Zone. Record the time each arrives (the clock button, or type it) to start their countdown, which turns yellow for the last 10 seconds. Record the time they are released and Penalty Served is ticked. A PZ marker then appears in the Red Cards column of the Recorder and Red Cards tabs, and DQ is added to it if a later red card disqualifies them.</li>' +
       '<li>Load sample race and Clear all judge entries are at the bottom of the Setup tab.</li>' +
     '</ul></section>' +
 
     '<section class="rule"><h3>Recorder<small>Recorder tab</small></h3><ul>' +
       '<li>Enter athlete information on the Recorder tab only. It fills in every other tab.</li>' +
       '<li>Every athlete needs a name and the numbers chosen under Athlete identification on the Setup tab (hip/lane # and/or bib #).</li>' +
-      '<li>Use Export PDF or Export CSV on the Recorder and Red Cards tabs to keep a copy of the race.</li>' +
+      '<li>Use Export PDF or Export CSV on the Recorder and Red Cards tabs to keep a copy of the race. The Red cards column, and the Status column in the CSV, mark athletes PZ (penalty served) and DQ.</li>' +
     '</ul></section>' +
 
     '<section class="rule"><h3>Red Cards<small>Red Cards tab</small></h3><ul>' +
@@ -4270,7 +4457,7 @@ function matrixHTML(mode, rows, emptyMsg){
       if (bib) tds += '<td class="l2 tm">' + esc(a.bib) + '</td>';
       tds += '<td class="l3" title="' + esc(a.name) + '"><span class="nm">' + esc(a.name) + '</span></td>';
     }
-    tds += '<td class="l4 cnt' + (c ? '' : ' zero') + '"><b>' + c + '</b>' + (st === 'dq' ? '<em class="stx dq"' + (chiefDQ(a.id) ? ' title="Disqualified by the Chief Judge in the last 100 m"' : '') + '>DQ</em>' : st === 'pit' ? '<em class="stx pit" title="Penalty Zone">PZ</em>' : '') + '</td>';
+    tds += '<td class="l4 cnt' + (c ? '' : ' zero') + '"><b>' + c + '</b>' + stChips(a.id, st) + '</td>';
     act.forEach(function(n, idx){
       var e = getEntry(n, a.id), g = idx % 2 === 1 ? ' ga' : '';
       spec[idx].forEach(function(t, ti){ tds += gridCell(t, e, g, ti === 0, a.id); });
@@ -4296,9 +4483,9 @@ function matrixHTML(mode, rows, emptyMsg){
 }
 
 /* ---------- Phone layout: athlete cards ---------- */
-function counterHTML(c, st){
+function counterHTML(c, st, aid){
   return '<span class="rc-count' + (c ? '' : ' zero') + '"><b>' + c + '</b>' +
-    (st === 'dq' ? '<em class="stx dq">DQ</em>' : st === 'pit' ? '<em class="stx pit" title="Penalty Zone">PZ</em>' : '') + '</span>';
+    stChips(aid, st) + '</span>';
 }
 function jlabel(n){ return S.event.judges[n - 1].name || ('Judge ' + n); }
 function judgeLines(a, showY){
@@ -4347,7 +4534,7 @@ function recorderCardsHTML(rows){
         '</div>'
       : '<div class="rc-top">' + cardIdHTML(a) + '</div>';
     return '<li class="acard' + (c ? ' has-rc' : '') + (st ? ' st-' + st : '') + '">' + top +
-      '<div class="a-sum">' + counterHTML(c, st) + '<span class="lbl">' + (c === 1 ? 'red card' : 'red cards') + '</span></div>' +
+      '<div class="a-sum">' + counterHTML(c, st, id) + '<span class="lbl">' + (c === 1 ? 'red card' : 'red cards') + '</span></div>' +
       judgeLines(a, true) + '</li>';
   }).join('') + '</ol>';
 }
@@ -4356,7 +4543,7 @@ function redcardsCardsHTML(rows, emptyMsg){
   return '<ol class="alist">' + rows.map(function(r){
     var a = r.a, c = r.c, st = status(c, r.a.id);
     return '<li class="acard' + (c ? ' has-rc' : ' zero') + (st ? ' st-' + st : '') + '">' +
-      '<div class="rc-top">' + cardIdHTML(a) + counterHTML(c, st) + '</div>' +
+      '<div class="rc-top">' + cardIdHTML(a) + counterHTML(c, st, a.id) + '</div>' +
       judgeLines(a, false) + '</li>';
   }).join('') + '</ol>';
 }
@@ -4559,7 +4746,8 @@ function redcardsHTML(){
   var rows = S.event.athletes.map(function(a){ return {a:a, c:redCount(a.id)}; });
   var withCards = rows.filter(function(r){ return r.c > 0; }).length;
   var dqN = rows.filter(function(r){ return status(r.c, r.a.id) === 'dq'; }).length;
-  var pitN = rows.filter(function(r){ return status(r.c, r.a.id) === 'pit'; }).length;
+  var pitN = rows.filter(function(r){ return status(r.c, r.a.id) === 'pit' && !(usePZ() && pzServed(r.a.id)); }).length;
+  var pzN = usePZ() ? S.event.athletes.filter(function(a){ return pzServed(a.id); }).length : 0;
   var shown = rows;
   if (S.rcOnly) shown = shown.filter(function(r){ return r.c > 0; });
   if (S.rcSort === 'cards') shown = shown.slice().sort(function(x, y){ return y.c - x.c; });
@@ -4570,6 +4758,7 @@ function redcardsHTML(){
   '<div class="stats noprint">' +
     '<div class="stat dq"><b>' + dqN + '</b><span>at DQ<span class="thr"> (' + S.event.dq + ' red cards)</span></span></div>' +
     (S.event.pit > 0 ? '<div class="stat"><b>' + pitN + '</b><span>in PZ<span class="thr"> (' + S.event.pit + ' red cards)</span></span></div>' : '') +
+    (usePZ() ? '<div class="stat"><b>' + pzN + '</b><span>PZ served</span></div>' : '') +
     '<div class="stat"><b>' + withCards + '</b><span>with red cards</span></div>' +
     '<div class="stat"><b>' + rows.length + '</b><span>athletes</span></div>' +
   '</div>' +
@@ -4760,7 +4949,7 @@ function delAthlete(id){
   render();
 }
 function athHasEntries(id){
-  for (var n = 1; n <= NJ; n++) { var e = S.entries[n][id]; if (e && (e.y1 || e.y2 || e.rc || e.rt || e.dn || e.lc || e.lt)) return true; }
+  for (var n = 1; n <= NJ; n++) { var e = S.entries[n][id]; if (e && (e.y1 || e.y2 || e.rc || e.rt || e.dn || e.lc || e.lt || e.pza || e.pzr || e.pzv)) return true; }
   return false;
 }
 function openPaste(){
@@ -4853,7 +5042,7 @@ async function exportCSV(){
   rows.push([]);
   var lead = function(label){ return [label].concat(pad(idCount())); };
   var idH = (useHip() ? ['Hip #'] : []).concat(useBib() ? ['Bib #'] : []);
-  var r1 = lead('Judge Number').concat(['Recorder']), r2 = lead('Judge Name').concat([ev.recorder]), r3 = lead('Cert # & Level').concat([ev.recorderCert]), r4 = idH.concat(['Athlete Name', 'Red Cards']);
+  var r1 = lead('Judge Number').concat(['Recorder', '']), r2 = lead('Judge Name').concat([ev.recorder, '']), r3 = lead('Cert # & Level').concat([ev.recorderCert, '']), r4 = idH.concat(['Athlete Name', 'Red Cards', 'Status']);      // Status: PZ and DQ, as on screen
   for (var ai = 0; ai < act.length; ai++) {
     var n = act[ai], j = ev.judges[n - 1], sp = judgeCols(n, mode);
     r1 = r1.concat([n === 1 ? '1 - Chief' : String(n)], pad(sp.length - 1));
@@ -4866,12 +5055,13 @@ async function exportCSV(){
     var r = [];
     if (useHip()) r.push(a.hip);
     if (useBib()) r.push(a.bib);
-    r.push(a.name, redCount(a.id));
+    var rcn = redCount(a.id);
+    r.push(a.name, rcn, stLabels(a.id, status(rcn, a.id)).join('; '));
     act.forEach(function(n){ var e = getEntry(n, a.id); judgeCols(n, mode).forEach(function(t){ r.push(t === 'dn' ? dnText(a.id, e) : e[t === 'rc100' ? 'rc' : t]); }); });
     rows.push(r);
   });
   if (mode === 'rec' && ev.athletes.length) {
-    var tr = ['Totals'].concat(pad(idCount()), [raceRedTotal()]);
+    var tr = ['Totals'].concat(pad(idCount()), [raceRedTotal(), '']);
     act.forEach(function(n){
       var t = judgeTotals(n);
       judgeCols(n, mode).forEach(function(c){ tr.push(c === 'y1' ? t.y1 : c === 'y2' ? t.y2 : (c === 'rc' || c === 'rc100') ? '> ' + t.gt + '; ~ ' + t.tl : c === 'lc' ? '> ' + t.lgt + '; ~ ' + t.ltl : ''); });
@@ -4955,7 +5145,7 @@ function buildPDF(JS, kind, paper){
   }
   if (!isRC && rows.length) rows = rows.concat([{tot:true}]);     // the Recorder's Totals row is laid out like one more athlete row
   var nDQ = all.filter(function(r){ return status(r.c, r.a.id) === 'dq'; }).length;
-  var nPZ = all.filter(function(r){ return status(r.c, r.a.id) === 'pit'; }).length;
+  var nPZ = all.filter(function(r){ return status(r.c, r.a.id) === 'pit' && !(usePZ() && pzServed(r.a.id)); }).length, nPZs = usePZ() ? all.filter(function(r){ return pzServed(r.a.id); }).length : 0;
   var nRC = all.filter(function(r){ return r.c > 0; }).length;
 
   // Header rows grow to two lines only when a name or cert number would not fit on one.
@@ -4976,7 +5166,7 @@ function buildPDF(JS, kind, paper){
   addItem('Road course certification #', ev.courseCert);
   var thr = 'DQ at ' + ev.dq + ' red cards' + (ev.pit > 0 ? ', Penalty Zone (PZ) at ' + ev.pit + ' red cards' : '');
   if (isRC) {
-    addItem('At DQ', nDQ); if (ev.pit > 0) addItem('In PZ', nPZ); addItem('With red cards', nRC); addItem('Athletes', all.length);
+    addItem('At DQ', nDQ); if (ev.pit > 0) addItem('In PZ', nPZ); if (usePZ()) addItem('PZ served', nPZs); addItem('With red cards', nRC); addItem('Athletes', all.length);
     items.push({l:'', v:'(' + thr + ')'});
   } else { items.push({l:'', v:thr}); }
   if (isSupervisory()) addItem('Supervisory official', (ev.judges[0].name || 'Official 1') + (ev.judges[0].cert ? ' (' + ev.judges[0].cert + ')' : ''));
@@ -5151,13 +5341,20 @@ function buildPDF(JS, kind, paper){
     else {
       setF(true, 11, PC.ink);
       var ns = String(c), nw = doc.getTextWidth(ns);
-      if (st) {
-        var lab = st === 'dq' ? 'DQ' : 'PZ';
-        setF(true, 7.5, PC.white); var lw = doc.getTextWidth(lab) + 8;
-        var sx = xs[3] + (fixed[3] - (nw + 5 + lw)) / 2;
+      var chips = stLabels(a.id, st);
+      if (chips.length) {
+        var cfs = 7.5, cws, total;
+        do {
+          setF(true, cfs, PC.white); cws = chips.map(function(l){ return doc.getTextWidth(l) + 8; });
+          total = nw + cws.reduce(function(sum, w){ return sum + 5 + w; }, 0);
+          if (total > fixed[3] - 8) cfs -= 0.5;
+        } while (total > fixed[3] - 8 && cfs > 4.5);
+        var sx = xs[3] + (fixed[3] - total) / 2, px = sx + nw;
         setF(true, 11, PC.ink); left(ns, sx, cy);
-        fill(st === 'dq' ? PC.red : PC.ink); doc.roundedRect(sx + nw + 5, cy - 6, lw, 12, 2, 2, 'F');
-        setF(true, 7.5, PC.white); mid(lab, sx + nw + 5 + lw / 2, cy);
+        chips.forEach(function(lab, ci){
+          px += 5; fill(lab === 'DQ' ? PC.red : PC.ink); doc.roundedRect(px, cy - 6, cws[ci], 12, 2, 2, 'F');
+          setF(true, cfs, PC.white); mid(lab, px + cws[ci] / 2, cy); px += cws[ci];
+        });
       } else mid(ns, ccx, cy);
     }
     for (var gi = 0; gi < grp.length; gi++) {
@@ -5281,7 +5478,7 @@ document.addEventListener('click', function(e){
       break;
     case 'clear-all':
       if (ro()) break;
-      confirmDlg('Clear all judge entries?', 'This clears every judge&rsquo;s paddles and red cards for all athletes' + (inHeats() ? ' in ' + esc(raceLabel(S.raceId)) + ' only' : '') + ', on every device. Use it before a new race. The athletes and officials stay.', 'Clear entries', clearAll);
+      confirmDlg('Clear all judge entries?', 'This clears every judge&rsquo;s paddles and red cards, and any Penalty Zone countdowns, for all athletes' + (inHeats() ? ' in ' + esc(raceLabel(S.raceId)) + ' only' : '') + ', on every device. Use it before a new race. The athletes and officials stay.', 'Clear entries', clearAll);
       break;
     case 'clear-judge': {
       if (roEnt()) break;
@@ -5293,6 +5490,42 @@ document.addEventListener('click', function(e){
     case 'pdf': openPdfDialog(b.dataset.k); break;
     case 'rc-sort': S.rcSort = b.dataset.v; render(); break;
     case 'rc-only': S.rcOnly = !S.rcOnly; render(); break;
+    case 'pz-time': {
+      if (roEnt()) break;
+      ent(PZM, PZ_KEY).pzd = String(+b.dataset.v || 0);
+      queueEntries(PZM, 100); render();
+      break;
+    }
+    case 'pz-stamp': {
+      if (roEnt()) break;
+      var pza = b.dataset.aid, pzk = b.dataset.k, pze = ent(PZM, pza), pzn = Date.now();
+      if (pzk === 'a') {
+        if (pze.pza) { pzClearArrival(pza); break; }
+        if (!raceOpen()) { toast('The race must be open to record an arrival.'); break; }
+        if (!pzTime()) { toast('Choose a countdown time first.'); break; }
+        pze.pza = String(pzn); pze.pzd = String(pzTime()); pze.pzr = ''; pze.pzv = '';
+        queueEntries(PZM, 60); render();
+      } else if (pze.pzr) { pze.pzr = ''; pze.pzv = ''; queueEntries(PZM, 60); render(); }
+      else if (pze.pza) {
+        if (pzState(pza, pzn).state === 'run') {
+          var pzath = findAth(pza);
+          confirmDlg('Release before the time is up?', 'The countdown for ' + esc(pzath ? athLabel(pzath) : 'this athlete') + ' has not finished. Release them anyway? They will be marked Penalty Served.', 'Release', function(){ pzRelease(pza, Date.now()); });
+        } else pzRelease(pza, pzn);
+      }
+      break;
+    }
+    case 'pz-served': {
+      if (roEnt()) { b.checked = !b.checked; break; }
+      var pzv = ent(PZM, b.dataset.aid); pzv.pzv = pzv.pzv ? '' : '1';
+      queueEntries(PZM, 60); render();
+      break;
+    }
+    case 'pz-preset': {
+      if (ro()) break;
+      if (S.event.pit > 0) S.event.dq = S.event.pit + 1; else { S.event.pit = 3; if (S.event.dq <= 3) S.event.dq = 4; }
+      queueRace(200); render();
+      break;
+    }
     case 'pz-opt': {
       if (ro()) break;
       S.event.usePZ = !S.event.usePZ;
@@ -5420,6 +5653,7 @@ document.addEventListener('click', function(e){
 
 document.addEventListener('input', function(e){
   var t = e.target;
+  if (t.dataset && t.dataset.bind === 'pz') return;              // Penalty Zone times are committed when the box is left
   if (t.id === 'jq') { S.filter = t.value; renderJudgeList(); return; }
   var b = t.dataset && t.dataset.bind;
   if (!b || (b === 'ent' ? roEnt() : ro())) return;
@@ -5447,6 +5681,7 @@ document.addEventListener('input', function(e){
 document.addEventListener('change', function(e){
   var t = e.target;
   if (t.id === 'imp-file') { importFile(t); return; }
+  if (t.dataset && t.dataset.bind === 'pz') { pzTyped(t); return; }
   if (t.dataset && t.dataset.bind === 'copysrc') { S.copySrc = t.value; return; }
   if (t.dataset && t.dataset.bind === 'divsel' && !ro()) {
     var dv = S.event.divisions[+t.dataset.i], pickv = t.value;
