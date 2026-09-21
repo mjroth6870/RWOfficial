@@ -69,7 +69,10 @@ button[disabled],input[disabled]{cursor:not-allowed}
 .pill.boot i{background:var(--line-strong)}
 
 /* ---------- Tabs ---------- */
-.tabs{display:flex;gap:6px;align-items:center;padding:8px 16px 12px;overflow-x:auto;scrollbar-width:thin}
+.tabs{display:flex;flex-direction:column;align-items:stretch;gap:6px;padding:8px 16px 12px}
+.tabrow{display:flex;gap:6px;align-items:center;overflow-x:auto;scrollbar-width:thin;max-width:100%}
+.tabrow.judgerow{flex-wrap:wrap;overflow-x:visible}      /* the judges wrap onto a second line on a narrow screen instead of scrolling */
+.tabs .judgerow .grp:first-child{margin-left:0;padding-left:0;border-left:0}
 .tab{flex:none;min-height:44px;padding:0 16px;border:1px solid var(--line-strong);background:var(--surface);border-radius:8px;font-weight:600;display:inline-flex;align-items:center;gap:8px}
 .tab:hover{border-color:var(--ink)}
 .tab[aria-selected="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
@@ -4010,23 +4013,24 @@ function jtabHTML(n){
 function renderNav(){
   if (S.official) {
     var jn = S.official, nmo = S.event.judges[jn - 1].name;
-    setHTML($('#nav'), '<button class="tab" role="tab" aria-selected="' + (S.tab === 'howto') + '" data-act="tab" data-tab="howto">How To</button>' +
-      '<button class="tab" role="tab" aria-selected="' + (S.tab === 'j' + jn) + '" data-act="tab" data-tab="j' + jn + '">' + jtitle(jn) + (nmo ? ', ' + esc(nmo) : '') + '</button>');
+    setHTML($('#nav'), '<div class="tabrow"><button class="tab" role="tab" aria-selected="' + (S.tab === 'howto') + '" data-act="tab" data-tab="howto">How To</button>' +
+      '<button class="tab" role="tab" aria-selected="' + (S.tab === 'j' + jn) + '" data-act="tab" data-tab="j' + jn + '">' + jtitle(jn) + (nmo ? ', ' + esc(nmo) : '') + '</button></div>');
     return;
   }
   var nRC = S.event.athletes.filter(function(a){ return redCount(a.id) > 0; }).length;
   var base = [['howto','How To'], ['setup','Setup'], ['recorder','Recorder'], ['redcards','Red Cards']];
   var homeBtn = S.acct && S.screen === 'meet' ? '<button type="button" class="tab homebtn" data-act="home" title="Back to your meets">&lsaquo; My meets</button>' : '';
-  var h = homeBtn + base.map(function(t){
+  var h = '<div class="tabrow">' + homeBtn + base.map(function(t){
     var badge = t[0] === 'redcards' && nRC ? '<span class="badge" title="Athletes with red cards">' + nRC + '</span>' : '';
     return '<button class="tab" role="tab" aria-selected="' + (S.tab === t[0]) + '" data-act="tab" data-tab="' + t[0] + '">' + t[1] + badge + '</button>';
   }).join('');
-  h += '<span class="grp" aria-hidden="true">Judges</span>';
+  h += '</div><div class="tabrow judgerow"><span class="grp" aria-hidden="true">Judges</span>';
   for (var n = 1; n <= NMAIN; n++) h += jtabHTML(n);
   // AC1 and AC2 get a tab once the Recorder has turned them on (or while one is being viewed)
   var acs = [];
   for (var an = NMAIN + 1; an <= NJ; an++) if (isActive(an) || S.tab === 'j' + an) acs.push(an);
   if (acs.length) h += '<span class="grp" aria-hidden="true">AC</span>' + acs.map(jtabHTML).join('');
+  h += '</div>';
   setHTML($('#nav'), h);
 }
 function renderRaceBar(){
