@@ -178,8 +178,11 @@ main{padding:0 16px 56px}
 .apick[aria-pressed="false"]{background:var(--off-bg);color:var(--off-ink);border-color:var(--off-bg)}
 .apick:hover:not([disabled]){border-color:var(--focus)}
 .jp-sep{flex:none;width:16px}
+.apick[disabled]{opacity:.5;cursor:not-allowed}
+.apick.pzm{min-width:64px}
+.pzm-line{display:flex;align-items:center;gap:10px;margin:8px 0}
 .jn.ac{font-size:26px}
-.jchip.ac{font-size:12px;letter-spacing:-.02em}
+.jchip.ac{font-size:11px;letter-spacing:-.03em;padding:0 2px}
 .jrow.ac{grid-template-columns:minmax(240px,1.3fr) minmax(200px,1fr)}
 .jrow.ac.has-dn{border-left-color:var(--ink)}
 .acm{display:inline-block;padding:0 5px;margin-right:4px;border-radius:4px;background:var(--ink);color:var(--bg);font:700 11px/16px system-ui,sans-serif;vertical-align:1px}
@@ -2991,12 +2994,15 @@ var qrcode = function() {
 /* ================================================================
    Constants & helpers
    ================================================================ */
-var NJ = 11, NMAIN = 9, MAXDIV = 32, MAXHEATS = 10;
+var NJ = 12, NMAIN = 9, NAC = 2, PZM = 12, MAXDIV = 32, MAXHEATS = 10;
 // Positions 10 and 11 are the assistant chief positions AC1 and AC2. They have a sheet of their own (a DQ notification for now),
 // but they are never part of the Recorder or Red Cards sheets, their totals or their exports.
-function isAC(n){ return n > NMAIN; }
-function jtag(n){ return isAC(n) ? 'AC' + (n - NMAIN) : String(n); }          // what tabs and chips show
-function jtitle(n){ return isAC(n) ? 'AC' + (n - NMAIN) : 'Judge ' + n; }     // what headings and messages say
+// Position 12 is the Penalty Zone Manager, PZM. It has no judge sheet: its QR code opens the Penalty Zone tab.
+function isAC(n){ return n > NMAIN && n <= NMAIN + NAC; }
+function isPZM(n){ return n === PZM; }
+function jtag(n){ return isPZM(n) ? 'PZM' : isAC(n) ? 'AC' + (n - NMAIN) : String(n); }          // what tabs and chips show
+function jtitle(n){ return isPZM(n) ? 'PZM' : isAC(n) ? 'AC' + (n - NMAIN) : 'Judge ' + n; }     // what headings and messages say
+function tabFor(n){ return isPZM(n) ? 'penalty' : 'j' + n; }                                       // the tab an official works on
 // Meet types and the age divisions each organization publishes. Youth divisions are Girls and Boys;
 // masters divisions are Women and Men. Masters groups are five years wide (100+ is the last group).
 //   AAU Youth: 8 & Under, single ages 9 to 14, 15-16, 17-18.   USATF Youth: 8 & Under, then 9-10 through 17-18.
@@ -3128,7 +3134,10 @@ var db = null, dl = null, U = null;
 function ro(){ return !S.ready || !S.canWrite || S.archived || (!!S.acct && S.screen === 'meet' && !S.acct.mine); }
 function roEnt(){ return !S.ready || !S.canWrite || S.archived; }
 function isSupervisory(){ return S.event.supervisory === true; }
-function isActive(n){ return S.event.active[n - 1] !== false; }
+function isActive(n){
+  if (isPZM(n)) return usePZ() && S.event.active[n - 1] === true;       // the Penalty Zone Manager needs Penalty Zone turned on
+  return S.event.active[n - 1] !== false;
+}
 // A supervisory Chief Judge (Judge 1) has a different sheet: no yellow paddles, a last-100m red card with its time
 // of day, and a DQ notification time. Everything else about the app treats them as a normal official.
 function chiefSheet(n){ return n === 1 && isSupervisory(); }
@@ -3158,7 +3167,8 @@ var COLS = {
   dn:    {h:'DQ notification',    cls:'hd h2', w:'dn'}
 };
 function activeList(){ var l = []; for (var n = 1; n <= NMAIN; n++) if (isActive(n)) l.push(n); return l; }      // the judges on the Recorder and Red Cards sheets
-function acList(){ var l = []; for (var n = NMAIN + 1; n <= NJ; n++) if (isActive(n)) l.push(n); return l; }
+function acList(){ var l = []; for (var n = NMAIN + 1; n <= NMAIN + NAC; n++) if (isActive(n)) l.push(n); return l; }
+function pzmList(){ return isActive(PZM) ? [PZM] : []; }
 function lock(n){ return roEnt() || !isActive(n) || !raceOpen(); }
 
 /* ---- race status: upcoming (blue), open for judges (green), closed / completed (orange) ---- */
@@ -3210,7 +3220,7 @@ function appLink(){
 // In an account, a code names its meet: the link carries the owner and meet, and the typed code starts with the meet's short code.
 function officialCode(n){
   var c = S.acct && S.acct.meetId && !S.acct.legacy && S.metaDoc && S.metaDoc.code ? S.metaDoc.code + '-' : '';
-  return c + (isAC(n) ? 'AC' + (n - NMAIN) : 'J' + n) + '-' + S.event.keys[n - 1];
+  return c + (isPZM(n) ? 'PZM' : isAC(n) ? 'AC' + (n - NMAIN) : 'J' + n) + '-' + S.event.keys[n - 1];
 }
 function officialLink(n){
   var t = S.event.keys[n - 1];
@@ -3370,12 +3380,12 @@ function payloadFor(path){
   var m;
   if (path === 'event/main') return Object.assign(pick(meet, MEET_KEYS), pick(rc('main').race, RACE_KEYS));
   if ((m = /^races\/([^\/]+)$/.exec(path))) return pick(rc(m[1]).race, RACE_KEYS);
-  if ((m = /^judges\/j(1[01]|[1-9])$/.exec(path))) return {entries:pruned(+m[1], 'main')};
-  if ((m = /^races\/([^\/]+)\/judges\/j(1[01]|[1-9])$/.exec(path))) return {entries:pruned(+m[2], m[1])};
+  if ((m = /^judges\/j(1[0-2]|[1-9])$/.exec(path))) return {entries:pruned(+m[1], 'main')};
+  if ((m = /^races\/([^\/]+)\/judges\/j(1[0-2]|[1-9])$/.exec(path))) return {entries:pruned(+m[2], m[1])};
   return null;
 }
 function localKey(path){
-  var m = /^judges\/j(1[01]|[1-9])$/.exec(path);
+  var m = /^judges\/j(1[0-2]|[1-9])$/.exec(path);
   if (path === 'event/main') return KEY + 'event';
   return m ? KEY + 'j' + m[1] : KEY + path;
 }
@@ -3471,7 +3481,7 @@ function applyRaceDoc(id, d){
 }
 function applyEntries(id, snap){
   var seen = {}, changed = false;
-  snap.docs.forEach(function(d){ var m = /^j(1[01]|[1-9])$/.exec(d.id); if (m) seen[+m[1]] = d.data(); });
+  snap.docs.forEach(function(d){ var m = /^j(1[0-2]|[1-9])$/.exec(d.id); if (m) seen[+m[1]] = d.data(); });
   for (var n = 1; n <= NJ; n++) {
     if (busy(entryPath(id, n))) continue;
     var ne = normEntries(seen[n]);
@@ -3814,23 +3824,24 @@ function meetManageHTML(){
 /* ---- officiating on another device: a device locked to one judge, with that judge's races ---- */
 function parseOfficial(h){
   h = h || '';
-  var m = /^official\/([A-Za-z0-9_.~:@+-]+)\/([A-Za-z0-9_.~:@+-]+)\/(1[01]|[1-9])-([A-Za-z0-9]{4,12})(?:\/(d\d{1,2}h\d{1,2}))?$/.exec(h);
+  var m = /^official\/([A-Za-z0-9_.~:@+-]+)\/([A-Za-z0-9_.~:@+-]+)\/(1[0-2]|[1-9])-([A-Za-z0-9]{4,12})(?:\/(d\d{1,2}h\d{1,2}))?$/.exec(h);
   if (m) return {u:m[1], m:m[2], n:+m[3], token:m[4].toUpperCase(), race:m[5] || null};
-  m = /^official-(1[01]|[1-9])-([A-Za-z0-9]{4,12})(?:\/(d\d{1,2}h\d{1,2}))?$/.exec(h);         // a link from before accounts
+  m = /^official-(1[0-2]|[1-9])-([A-Za-z0-9]{4,12})(?:\/(d\d{1,2}h\d{1,2}))?$/.exec(h);         // a link from before accounts
   return m ? {u:null, m:null, n:+m[1], token:m[2].toUpperCase(), race:m[3] || null} : null;
 }
 function parseCode(t){
-  // codes name a judge (J3, or AC1 and AC2 for the assistant chiefs), optionally led by the meet's short code
-  var jn = function(d, ac){ return ac ? NMAIN + +ac : +d; };
-  var m = /^\s*([A-Za-z0-9]{5})\s*[- ]\s*(?:J?\s*(1[01]|[1-9])|AC\s*([12]))\s*[- ]?\s*([A-Za-z0-9]{4,12})\s*$/i.exec(t || '');
-  if (m) return {code:m[1].toUpperCase(), n:jn(m[2], m[3]), token:m[4].toUpperCase(), race:null};
-  m = /^\s*(?:J?\s*(1[01]|[1-9])|AC\s*([12]))\s*[- ]?\s*([A-Za-z0-9]{4,12})\s*$/i.exec(t || '');
-  return m ? {code:null, n:jn(m[1], m[2]), token:m[3].toUpperCase(), race:null} : null;
+  // codes name an official (J3, AC1 or AC2, or PZM for the Penalty Zone Manager), optionally led by the meet's short code
+  var jn = function(d, ac, pz){ return pz ? PZM : ac ? NMAIN + +ac : +d; };
+  var m = /^\s*([A-Za-z0-9]{5})\s*[- ]\s*(?:J?\s*(1[0-2]|[1-9])|AC\s*([12])|(PZM))\s*[- ]?\s*([A-Za-z0-9]{4,12})\s*$/i.exec(t || '');
+  if (m) return {code:m[1].toUpperCase(), n:jn(m[2], m[3], m[4]), token:m[5].toUpperCase(), race:null};
+  m = /^\s*(?:J?\s*(1[0-2]|[1-9])|AC\s*([12])|(PZM))\s*[- ]?\s*([A-Za-z0-9]{4,12})\s*$/i.exec(t || '');
+  return m ? {code:null, n:jn(m[1], m[2], m[3]), token:m[4].toUpperCase(), race:null} : null;
 }
 function officialValid(o){ return !!o && !!S.event.keys[o.n - 1] && S.event.keys[o.n - 1] === o.token; }
 // Races this judge is on the panel for: every race unless the Recorder turned this judge off in it.
 function officiatingIds(n){
-  return raceList().filter(function(r){ var x = RC[r.id]; return x ? (isAC(n) ? x.race.active[n - 1] === true : x.race.active[n - 1] !== false) : !isAC(n); }).map(function(r){ return r.id; });
+  if (isPZM(n) && !usePZ()) return [];
+  return raceList().filter(function(r){ var x = RC[r.id]; return x ? (n > NMAIN ? x.race.active[n - 1] === true : x.race.active[n - 1] !== false) : n <= NMAIN; }).map(function(r){ return r.id; });
 }
 var racesSub = null;
 function loadAllLocalRaces(){
@@ -3851,7 +3862,7 @@ function enterOfficial(o){
   S.official = o.n; S.offToken = o.token;
   var inAcct = S.acct && S.acct.meetId && !S.acct.legacy;
   LS.set(KEY + 'official', JSON.stringify({n:o.n, token:o.token, u:inAcct ? S.acct.owner : null, m:inAcct ? S.acct.meetId : null}));
-  S.tab = 'j' + o.n; LS.set(KEY + 'tab', S.tab);
+  S.tab = tabFor(o.n); LS.set(KEY + 'tab', S.tab);
   if (o.race && validRace(o.race)) { wantRace = o.race; LS.set(KEY + 'race', o.race); }
   syncOfficialSubs();
 }
@@ -3982,7 +3993,7 @@ function fitGrid(){
 }
 function render(){
   if (S.screen !== 'meet') { renderAccount(); return; }
-  if (S.tab === 'penalty' && S.started && !usePZ()) { S.tab = 'recorder'; LS.set(KEY + 'tab', S.tab); }     // turned off while it was open
+  if (S.tab === 'penalty' && S.started && !usePZ() && !S.official) { S.tab = 'recorder'; LS.set(KEY + 'tab', S.tab); }     // turned off while it was open
   var ui = captureUI();
   renderHeader(); renderNav(); renderRaceBar(); renderView();
   fitGrid();
@@ -4020,7 +4031,7 @@ function renderNav(){
   if (S.official) {
     var jn = S.official, nmo = S.event.judges[jn - 1].name;
     setHTML($('#nav'), '<div class="tabrow"><button class="tab" role="tab" aria-selected="' + (S.tab === 'howto') + '" data-act="tab" data-tab="howto">How To</button>' +
-      '<button class="tab" role="tab" aria-selected="' + (S.tab === 'j' + jn) + '" data-act="tab" data-tab="j' + jn + '">' + jtitle(jn) + (nmo ? ', ' + esc(nmo) : '') + '</button></div>');
+      '<button class="tab" role="tab" aria-selected="' + (S.tab === tabFor(jn)) + '" data-act="tab" data-tab="' + tabFor(jn) + '">' + jtitle(jn) + (nmo ? ', ' + esc(nmo) : '') + '</button></div>');
     return;
   }
   var nRC = S.event.athletes.filter(function(a){ return redCount(a.id) > 0; }).length;
@@ -4035,7 +4046,7 @@ function renderNav(){
   for (var n = 1; n <= NMAIN; n++) h += jtabHTML(n);
   // AC1 and AC2 get a tab once the Recorder has turned them on (or while one is being viewed)
   var acs = [];
-  for (var an = NMAIN + 1; an <= NJ; an++) if (isActive(an) || S.tab === 'j' + an) acs.push(an);
+  for (var an = NMAIN + 1; an <= NMAIN + NAC; an++) if (isActive(an) || S.tab === 'j' + an) acs.push(an);
   if (acs.length) h += '<span class="grp" aria-hidden="true">AC</span>' + acs.map(jtabHTML).join('');
   h += '</div>';
   setHTML($('#nav'), h);
@@ -4071,7 +4082,7 @@ function hashFor(tab){ return tab + (inHeats() && S.raceId !== 'main' ? '/' + S.
 function setHash(){ try { var h = hashFor(S.tab); if (location.hash !== '#' + h) location.hash = h; } catch(e){} }
 function go(id, fromHash){
   if (!validTab(id)) id = 'howto';
-  if (S.official && id !== 'howto' && id !== 'j' + S.official) id = 'j' + S.official;
+  if (S.official && id !== 'howto' && id !== tabFor(S.official)) id = tabFor(S.official);
   var changed = id !== S.tab;
   S.tab = id;
   LS.set(KEY + 'tab', id);
@@ -4088,8 +4099,12 @@ function go(id, fromHash){
 function penaltyHTML(){
   var pit = S.event.pit;
   if (!usePZ()) return '<section class="band"><h2 class="sec-h">Penalty Zone</h2><p class="off-note">Penalty Zone is off. Turn it on under Race format on the Setup tab.</p></section>';
+  var j = S.event.judges[PZM - 1], on = isActive(PZM);
+  var mgr = on
+    ? '<p class="pzm-line"><span class="jchip ac">PZM</span><span><b>Penalty Zone Manager</b>' + (j.name ? ': ' + esc(j.name) + (j.cert ? ', ' + esc(j.cert) : '') : ' (name and cert are set on the Setup tab)') + '</span></p>' + qrPanelHTML(PZM)
+    : '<p class="off-note">' + (S.official ? 'The Penalty Zone Manager is not on for this race.' : 'The Penalty Zone Manager (PZM) is off for this race. The Recorder turns it on under Judges in this race on the Setup tab.') + '</p>';
   return '<section class="band"><h2 class="sec-h">Penalty Zone</h2>' +
-    '<p class="lead">Penalty Zone is on for this meet. Nothing is recorded here yet.</p>' +
+    '<p class="lead">Penalty Zone is on for this meet. Nothing is recorded here yet.</p>' + mgr +
     '<p class="off-note">' + (pit > 0 ? 'Athletes are sent to the Penalty Zone at ' + pit + ' red card' + (pit === 1 ? '' : 's') + '. Change this in the Race section of the Setup tab.' : 'No red card count is set for the Penalty Zone. Set one in the Race section of the Setup tab.') + '</p></section>';
 }
 function renderView(){
@@ -4106,7 +4121,7 @@ function renderView(){
 /* ---------- How To ---------- */
 function howtoHTML(){
   var officialBand = S.official
-    ? '<div class="band off-here"><b>You are officiating as Judge ' + S.official + ' on this device.</b> Your sheet and the races you are on the panel for are open. Use Exit at the top to return to the full app.</div>'
+    ? '<div class="band off-here"><b>You are officiating as ' + (isPZM(S.official) ? 'the Penalty Zone Manager (PZM)' : jtitle(S.official)) + ' on this device.</b> Your ' + (isPZM(S.official) ? 'tab' : 'sheet') + ' and the races you are on the panel for are open. Use Exit at the top to return to the full app.</div>'
     : '<div class="band off-here"><b>Officiating on your own device?</b> Scan your QR code, or type your code here.<div class="toolbar"><button class="btn primary" data-act="code-dialog">Enter official code</button></div></div>';
   return '<div class="howto">' + officialBand +
     '<h2 class="pg">How this works</h2>' +
@@ -4120,7 +4135,7 @@ function howtoHTML(){
       '<li>If the Chief Judge is judging, check Last 100m red card beside it instead. Judge 1 then has a separate last 100m red card and time of day under their normal red card, and using it disqualifies the athlete. It cannot be checked while Supervisory official only is on.</li>' +
       '<li>Under Judges in this race, turn on the judges working this race. Judges who are off are grey, and are hidden from the Recorder and Red Cards tabs and from exports.</li>' +
       '<li>Set how many red cards send an athlete to the Penalty Zone or result in a DQ. The default is a DQ at 3.</li>' +
-      '<li>Under Race format, check Penalty Zone to turn on the Penalty Zone tab, next to Red Cards. The tab stays greyed out until then.</li>' +
+      '<li>Under Race format, check Penalty Zone to turn on the Penalty Zone tab, next to Red Cards. The tab stays greyed out until then. Once it is on, PZM (Penalty Zone Manager) can be turned on under Judges in this race. The PZM gets a QR code, shown on the Penalty Zone tab, that opens only that tab on their own device.</li>' +
       '<li>Load sample race and Clear all judge entries are at the bottom of the Setup tab.</li>' +
     '</ul></section>' +
 
@@ -4199,7 +4214,7 @@ function raceRedTotal(){ return S.event.athletes.reduce(function(m, a){ return m
 function dnItems(aid, own){
   var out = [];
   if (own && own.dn) out.push({who:'', t:own.dn});
-  for (var n = NMAIN + 1; n <= NJ; n++) { if (!isActive(n)) continue; var e = getEntry(n, aid); if (e.dn) out.push({who:jtag(n), t:e.dn}); }
+  for (var n = NMAIN + 1; n <= NMAIN + NAC; n++) { if (!isActive(n)) continue; var e = getEntry(n, aid); if (e.dn) out.push({who:jtag(n), t:e.dn}); }
   return out;
 }
 function dnText(aid, own){ return dnItems(aid, own).map(function(i){ return i.who ? i.t + ' (' + i.who + ')' : i.t; }).join('; '); }
@@ -4347,13 +4362,13 @@ function redcardsCardsHTML(rows, emptyMsg){
 }
 function officialsHTML(){
   var dis = ro() ? ' disabled' : '';
-  var list = activeList().concat(acList());
+  var list = activeList().concat(acList(), pzmList());
   if (list.indexOf(1) < 0) list.unshift(1);    // official 1 is always listed: it holds the supervisory choice
   var h = '<section class="band noprint"><h2 class="sec-h">Officials</h2>' +
-    '<p class="off-note">Names and cert numbers appear on the Recorder and Red Cards tabs, in exports, and at the top of each judge&rsquo;s own sheet (AC1 and AC2 only on their own sheets)' + (inHeats() ? ' for ' + esc(raceLabel(S.raceId)) : '') + '.</p><div class="off-grid">';
+    '<p class="off-note">Names and cert numbers appear on the Recorder and Red Cards tabs, in exports, and at the top of each judge&rsquo;s own sheet (AC1, AC2 and PZM only on their own sheet or tab)' + (inHeats() ? ' for ' + esc(raceLabel(S.raceId)) : '') + '.</p><div class="off-grid">';
   list.forEach(function(n){
     var j = S.event.judges[n - 1];
-    h += '<div class="off-row' + (n === 1 ? ' has-sup' : '') + '"><span class="jchip' + (isAC(n) ? ' ac' : '') + '" title="' + (isAC(n) ? jtitle(n) : 'Official ' + n) + '">' + jtag(n) + '</span><div class="off-in">' +
+    h += '<div class="off-row' + (n === 1 ? ' has-sup' : '') + '"><span class="jchip' + (n > NMAIN ? ' ac' : '') + '" title="' + (n > NMAIN ? jtitle(n) : 'Official ' + n) + '">' + jtag(n) + '</span><div class="off-in">' +
       '<input data-bind="jd" data-n="' + n + '" data-k="name" data-f="jd:' + n + ':name" value="' + esc(j.name) + '" placeholder="' + (n === 1 ? 'Official 1 name' : jtitle(n) + ' name') + '" aria-label="Official ' + jtag(n) + ' name"' + dis + '>' +
       '<input data-bind="jd" data-n="' + n + '" data-k="cert" data-f="jd:' + n + ':cert" value="' + esc(j.cert) + '" placeholder="Cert # &amp; level" aria-label="Official ' + jtag(n) + ' cert number and level"' + dis + '></div>';
     if (n === 1) {
@@ -4460,7 +4475,7 @@ function raceFormatHTML(){
   }
   var h = '<div class="rformat noprint"><div class="jp-head"><span class="jp-title" id="rf-t">Race format</span></div>' +
     '<div class="rf-opts" role="group" aria-labelledby="rf-t">' + opt('combined', 'Combined race') + opt('heats', 'Separate heats by divisions') + '</div>' +
-    '<div class="rf-opts pz-opt" role="group" aria-label="Penalty Zone"><label class="chk"><input type="checkbox" data-act="pz-opt" data-f="pz:opt"' + (usePZ() ? ' checked' : '') + dis + '><span>Penalty Zone<small>Turns on the Penalty Zone tab, next to Red Cards.</small></span></label></div>';
+    '<div class="rf-opts pz-opt" role="group" aria-label="Penalty Zone"><label class="chk"><input type="checkbox" data-act="pz-opt" data-f="pz:opt"' + (usePZ() ? ' checked' : '') + dis + '><span>Penalty Zone<small>Turns on the Penalty Zone tab, next to Red Cards. The Penalty Zone Manager (PZM) can then be turned on under Judges in this race.</small></span></label></div>';
   if (heats) {
     h += '<div class="rf-div">' +
       '<div class="mt-group"><div class="jp-head"><span class="jp-title" id="mt-t">Meet type</span></div>' +
@@ -4514,14 +4529,18 @@ function judgePickHTML(){
     on = isActive(n);
     h += '<button type="button" class="jpick" data-act="toggle-judge" data-n="' + n + '" data-f="jp:' + n + '" aria-pressed="' + on + '" aria-label="Judge ' + n + '" title="Judge ' + n + (on ? ' is on for this race. Select to turn off.' : ' is off. Select to turn on.') + '"' + dis + '>' + n + '</button>';
   }
-  for (n = NMAIN + 1; n <= NJ; n++) {
+  for (n = NMAIN + 1; n <= NMAIN + NAC; n++) {
     on = isActive(n);
     ah += '<button type="button" class="apick" data-act="toggle-judge" data-n="' + n + '" data-f="jp:' + n + '" aria-pressed="' + on + '" aria-label="' + jtitle(n) + '" title="' + jtitle(n) + (on ? ' is on for this race. Select to turn off.' : ' is off. Select to turn on.') + '"' + dis + '>' + jtag(n) + '</button>';
   }
+  var pzOn = usePZ(), pon = isActive(PZM);
+  ah += '<span class="jp-sep" aria-hidden="true"></span><button type="button" class="apick pzm" data-act="toggle-judge" data-n="' + PZM + '" data-f="jp:' + PZM + '" aria-pressed="' + pon + '" aria-label="Penalty Zone Manager" title="' +
+    (pzOn ? 'Penalty Zone Manager (PZM) ' + (pon ? 'is on for this race. Select to turn off.' : 'is off. Select to turn on.') : 'Turn on Penalty Zone under Race format to use the Penalty Zone Manager.') + '"' + (pzOn ? dis : ' disabled') + '>PZM</button>';
   return '<div class="jpicker noprint"><div class="jp-head"><span class="jp-title" id="jp-t">Judges in this race</span><span class="jp-count">' + k + ' of ' + NMAIN + ' on</span></div>' +
     '<div class="jp-row" role="group" aria-labelledby="jp-t">' + h + '<span class="jp-sep" aria-hidden="true"></span>' + ah + '</div>' +
     '<p class="jp-note">Judges who are off are hidden from the Recorder and Red Cards tabs and from exports, and their red cards are not counted. Their entries are kept if you turn them back on.</p>' +
-    '<p class="jp-note">AC1 and AC2 are optional. They only enter DQ notifications, which appear with the Chief Judge&rsquo;s and are marked AC1 or AC2. They never appear on the Recorder or Red Cards tabs or in exports.</p></div>';
+    '<p class="jp-note">AC1 and AC2 are optional. They only enter DQ notifications, which appear with the Chief Judge&rsquo;s and are marked AC1 or AC2. They never appear on the Recorder or Red Cards tabs or in exports.</p>' +
+    '<p class="jp-note">PZM is the Penalty Zone Manager. It can be turned on once Penalty Zone is checked under Race format, and its QR code opens the Penalty Zone tab.</p></div>';
 }
 function warnText(n){
   var what = orJoin(idNouns().map(function(x){ return 'a ' + x; }).concat(['name']));
@@ -4587,11 +4606,11 @@ function qrPanelHTML(n){
   if (!S.event.keys[n - 1]) return h + '<p class="qr-note">' + (ro() ? 'The Recorder has not created the official codes yet.' : 'Creating the code.') + '</p></div>';
   var link = officialLink(n);
   return h + '<div class="qr-body"><div class="qr-img">' + qrSvg(link, 220) + '</div><div class="qr-info">' +
-    '<p class="qr-lead"><b>Scan to officiate as ' + jtitle(n) + (nm ? ', ' + esc(nm) : '') + ', on another device.</b> Their sheet opens with every race ' + jtitle(n) + ' is officiating.</p>' +
-    '<p class="qr-code">Code <b>' + esc(officialCode(n)) + '</b><small>If the link opens the app but not this sheet, choose &ldquo;Enter official code&rdquo; on the How To tab and type it.</small></p>' +
+    '<p class="qr-lead"><b>Scan to officiate as ' + jtitle(n) + (nm ? ', ' + esc(nm) : '') + ', on another device.</b> ' + (isPZM(n) ? 'The Penalty Zone tab opens' : 'Their sheet opens') + ' with every race ' + jtitle(n) + ' is officiating.</p>' +
+    '<p class="qr-code">Code <b>' + esc(officialCode(n)) + '</b><small>If the link opens the app but not this ' + (isPZM(n) ? 'tab' : 'sheet') + ', choose &ldquo;Enter official code&rdquo; on the How To tab and type it.</small></p>' +
     '<label class="sr" for="qr-link">Link for ' + jtitle(n) + '</label><input id="qr-link" class="qr-link" readonly value="' + esc(link) + '" data-f="qr-link">' +
     '<div class="toolbar"><button type="button" class="btn sm" data-act="qr-copy">Copy link</button></div>' +
-    '<p class="qr-note">Anyone who scans this can record as ' + jtitle(n) + '. The Recorder can replace every code under Official codes on the Setup tab.</p>' +
+    '<p class="qr-note">Anyone who scans this can ' + (isPZM(n) ? 'act' : 'record') + ' as ' + jtitle(n) + '. The Recorder can replace every code under Official codes on the Setup tab.</p>' +
     (S.mode === 'local' ? '<p class="qr-note">Live sync is not available in this view, so another device would not see this meet.</p>' : '') +
     '</div></div></div>';
 }
@@ -5377,7 +5396,8 @@ document.addEventListener('click', function(e){
     case 'toggle-judge': {
       if (ro()) break;
       var tn = +b.dataset.n;
-      S.event.active[tn - 1] = !isActive(tn);
+      if (isPZM(tn) && !usePZ()) break;                  // needs Penalty Zone turned on first
+      S.event.active[tn - 1] = isPZM(tn) ? S.event.active[tn - 1] !== true : !isActive(tn);
       queueRace(200); render();
       break;
     }
@@ -5488,7 +5508,7 @@ window.addEventListener('resize', fitGrid);
   var hp = h.split('/'), po = parseOfficial(h);
   S.tab = validTab(hp[0]) ? hp[0] : validTab(saved) ? saved : 'howto';
   wantRace = hp[1] || LS.get(KEY + 'race');
-  if (po) { S.pendingOff = po; S.tab = 'j' + po.n; if (po.race) wantRace = po.race; }   // opened from a judge's QR code
+  if (po) { S.pendingOff = po; S.tab = tabFor(po.n); if (po.race) wantRace = po.race; }   // opened from a judge's QR code
   try {
     var mq = window.matchMedia('(max-width: 720px)');
     S.narrow = mq.matches;
