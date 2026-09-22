@@ -178,6 +178,23 @@ main{padding:0 16px 56px}
 .apick[aria-pressed="false"]{background:var(--off-bg);color:var(--off-ink);border-color:var(--off-bg)}
 .apick:hover:not([disabled]){border-color:var(--focus)}
 .jp-sep{flex:none;width:16px}
+.dq-id-opt{margin-top:6px}
+.dq-id-note{margin-top:2px}
+.board{min-height:100dvh;padding:28px 32px 48px;background:var(--bg);color:var(--ink)}
+.board-head{margin-bottom:26px}
+.board-head h1{margin:0 0 6px;font:800 clamp(28px,4vw,52px)/1 var(--cond);letter-spacing:.02em}
+.board-sub{font-size:clamp(15px,1.6vw,22px);color:var(--muted)}
+.board-msg{margin-top:18vh;font-size:clamp(20px,3vw,32px);text-align:center;color:var(--muted)}
+.board-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:20px}
+.board-card{background:var(--surface);border:3px solid var(--line-strong);border-radius:20px;padding:26px 10px;text-align:center}
+.board-card.hot{border-color:var(--red)}
+.board-card.dq{background:var(--red-soft);border-color:var(--red)}
+.board-num{font:800 clamp(28px,4vw,46px)/1 var(--cond);letter-spacing:.02em}
+.board-rc{margin-top:8px}
+.board-rc-n{font:800 clamp(22px,3.4vw,38px)/1 var(--cond);color:var(--red-ink)}
+.board-card:not(.hot):not(.dq) .board-rc-n{color:var(--muted)}
+.board-rc-l{display:block;font-size:clamp(11px,1vw,14px);color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.board-chips{margin-top:8px;display:flex;justify-content:center;gap:4px;flex-wrap:wrap}
 .apick[disabled]{opacity:.5;cursor:not-allowed}
 .apick.pzm{min-width:64px}
 .pzm-line{display:flex;align-items:center;gap:10px;margin:8px 0}
@@ -2980,7 +2997,7 @@ var qrcode = function() {
         // An official who arrives by a QR link needs no account: they are signed in as a guest.
         try {
           var h = location.hash || '', saved = ''; try { saved = localStorage.getItem('rwo1.official') || ''; } catch(e){}
-          if (!auth.currentUser && (/^#official/.test(h) || saved)) await sdk.auth.signInAnonymously(auth);
+          if (!auth.currentUser && (/^#(official|dqboard)/.test(h) || saved)) await sdk.auth.signInAnonymously(auth);
         } catch(e){}
         return {sdk:sdk, app:app, auth:auth, fs:fs};
       });
@@ -3117,7 +3134,7 @@ function fmtDate(s){
 /* ================================================================
    State
    ================================================================ */
-var MEET_KEYS = ['name', 'date', 'distance', 'location', 'courseLength', 'courseCert', 'raceMode', 'meetType', 'useHip', 'useBib', 'usePZ', 'keys', 'shareLink', 'statuses', 'divCount', 'divisions'];               // shared by every race
+var MEET_KEYS = ['name', 'date', 'distance', 'location', 'courseLength', 'courseCert', 'raceMode', 'meetType', 'useHip', 'useBib', 'usePZ', 'dqId', 'keys', 'shareLink', 'statuses', 'divCount', 'divisions'];               // shared by every race
 var RACE_KEYS = ['recorder', 'recorderCert', 'judges', 'active', 'supervisory', 'last100', 'athletes', 'dq', 'pit'];  // one set per race
 
 function blankMeet(){
@@ -3125,7 +3142,7 @@ function blankMeet(){
   for (var k = 0; k < MAXDIV; k++) dv.push({name:'', heats:1, custom:false});
   var ks = [];
   for (var q = 0; q < NJ; q++) ks.push('');
-  return {name:'', date:'', distance:'', location:'', courseLength:'', courseCert:'', raceMode:'combined', meetType:'', useHip:true, useBib:true, usePZ:false, keys:ks, shareLink:'', statuses:{}, divCount:2, divisions:dv};
+  return {name:'', date:'', distance:'', location:'', courseLength:'', courseCert:'', raceMode:'combined', meetType:'', useHip:true, useBib:true, usePZ:false, dqId:'', keys:ks, shareLink:'', statuses:{}, divCount:2, divisions:dv};
 }
 function blankRace(){
   var j = [], on = [];
@@ -3156,6 +3173,10 @@ var S = {
   copySrc: '',                   // race chosen in "Copy officials from"
   standalone: false,             // running on an ordinary web host with Firebase, not inside Claude
   linkSent: '',                  // the email address a sign-in link was just sent to
+  board: false,                  // this device is showing the DQ Board, not the normal app
+  pendingBoard: null,             // a DQ Board link waiting for the meet to load
+  dqOpen: false,                  // the DQ Board link panel open on Setup
+  mainExists: null,               // whether the meet document was found (null = not checked yet)
   qrOpen: false,                 // QR panel open on the judge tab
   official: 0,                   // judge number this device is officiating as (0 = normal app)
   offToken: '',
@@ -3267,6 +3288,10 @@ function appLink(){
   return l.replace(/#.*$/, '');
 }
 // In an account, a code names its meet: the link carries the owner and meet, and the typed code starts with the meet's short code.
+// The DQ Board's link: it names the owner and meet, like an official link, but no judge and no code to check.
+function boardLink(){
+  return S.acct && S.acct.meetId && !S.acct.legacy ? appLink() + '#dqboard/' + S.acct.owner + '/' + S.acct.meetId : '';
+}
 function officialCode(n){
   var c = S.acct && S.acct.meetId && !S.acct.legacy && S.metaDoc && S.metaDoc.code ? S.metaDoc.code + '-' : '';
   return c + (isPZM(n) ? 'PZM' : isAC(n) ? 'AC' + (n - NMAIN) : 'J' + n) + '-' + S.event.keys[n - 1];
@@ -3288,6 +3313,10 @@ function qrSvg(text, px){
 /* ---- athlete identification: hip # and/or bib # ---- */
 function useHip(){ return S.event.useHip !== false; }
 function useBib(){ return S.event.useBib !== false; }
+// Which number the DQ Board lists athletes by: whichever the Recorder chose, or the only one in use.
+function boardId(){ if (useHip() && useBib()) return S.event.dqId === 'hip' ? 'hip' : 'bib'; return useHip() ? 'hip' : 'bib'; }
+function boardIdLabel(){ return boardId() === 'hip' ? 'Hip #' : 'Bib #'; }
+
 function idCount(){ return (useHip() ? 1 : 0) + (useBib() ? 1 : 0); }
 function orJoin(a){ return a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' or ' + a[a.length - 1]; }
 function idNouns(){ var a = []; if (useHip()) a.push('hip/lane #'); if (useBib()) a.push('bib #'); return a; }
@@ -3321,6 +3350,12 @@ function raceList(){
 var wantRace = null;      // the heat this device chose (from a link or a button)
 function effectiveRace(){
   if (!inHeats()) return 'main';
+  if (S.board) {
+    var open = raceList().filter(function(r){ return raceStatus(r.id) === 'open'; });
+    if (open.length) return open[0].id;
+    if (validRace(S.raceId)) return S.raceId;      // keep showing the last race once it closes, until another opens
+    return validRace(wantRace) ? wantRace : 'd1h1';
+  }
   var ids = S.official ? officiatingIds(S.official) : null;
   if (validRace(wantRace) && (!ids || ids.indexOf(wantRace) >= 0)) return wantRace;
   if (ids && ids.length) return ids[0];
@@ -3338,6 +3373,7 @@ function normMeet(d){
   e.useHip = d.useHip !== false; e.useBib = d.useBib !== false;   // how athletes are identified; at least one is always on
   if (!e.useHip && !e.useBib) e.useHip = true;
   e.usePZ = d.usePZ === true;                 // the Penalty Zone tab is off unless the Recorder turns it on
+  e.dqId = d.dqId === 'hip' || d.dqId === 'bib' ? d.dqId : '';   // which number the DQ Board shows, when both are in use
   for (var kk = 0; kk < NJ; kk++) e.keys[kk] = Array.isArray(d.keys) ? str(d.keys[kk]).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12) : '';
   e.shareLink = str(d.shareLink);
   e.statuses = {};
@@ -3539,6 +3575,7 @@ function applyEntries(id, snap){
   return changed;
 }
 function onMainSnap(snap){
+  S.mainExists = !!(snap && snap.exists);
   var changed = applyMain(snap && snap.exists ? snap.data() : null);
   if (!S.started) { S.started = true; if (resolveOfficial() === false) return; S.raceId = effectiveRace(); startRace(); return; }   // the first snapshot decides which race to open
   if (S.official) {
@@ -3600,6 +3637,12 @@ async function startAccounts(u, uid){
   ME = {id:uid, name:'', email:null, avatarUrl:'', anon:false};
   if (uid && typeof u.me === 'function') { try { var m = await u.me(); ME = {id:uid, name:m.name || '', email:m.email || null, avatarUrl:m.avatarUrl || '', anon:!!m.isAnonymous}; } catch(e){} }
   S.ready = true; S.booted = true; clearTimeout(bailT);
+  if (S.pendingBoard) {
+    if (!uid) { S.acct = {uid:null}; if (!(await ensureGuest())) { S.pendingBoard = null; S.board = false; S.screen = 'signin'; render(); return; } uid = S.acct.uid; }
+    else S.acct = {uid:uid, owner:null, meetId:null, mine:false, legacy:false};
+    openBoard(S.pendingBoard.u, S.pendingBoard.m);
+    return;
+  }
   if (!uid) { S.acct = {uid:null}; S.screen = 'signin'; render(); return; }        // signed out, or no identity on this page
   S.acct = {uid:uid, owner:null, meetId:null, mine:false, legacy:false};
   // An official's link, or the code remembered on this device, goes straight to that meet.
@@ -3673,6 +3716,14 @@ function openMeet(owner, meetId, legacy){
   mainSub = db.doc(phys('event/main')).onSnapshot(function(snap){ onMainSnap(snap); }, subErr);
   render();
 }
+function openBoard(owner, meetId){
+  teardownMeet();
+  S.acct.owner = owner; S.acct.meetId = meetId; S.acct.legacy = false; S.acct.mine = false;
+  S.screen = 'meet'; S.mode = 'live'; S.ready = false; armBail();
+  mainSub = db.doc(phys('event/main')).onSnapshot(function(snap){ onMainSnap(snap); }, subErr);
+  render();
+}
+
 function goHome(){
   teardownMeet();
   S.acct.owner = null; S.acct.meetId = null; S.acct.mine = false; S.acct.legacy = false;
@@ -3808,14 +3859,16 @@ function signupHTML(){
     '<p class="off-note">' + (em ? 'This email address is your account. The app reads it from your sign-in each time you visit and does not store it.' : 'Your organization does not share email addresses with this page, so your account is tied to your sign-in instead.') + '</p>' +
     '<div class="toolbar"><button class="btn primary" data-act="signup"' + (S.canWrite ? '' : ' disabled') + '>Create my account</button></div>' +
     '<p class="off-note">With an account you can set up your own meets, and your previous meets are archived.</p></section>' +
-    '<section class="band"><h2 class="sec-h">Officiating a race?</h2><p class="off-note">You do not need an account. Scan the QR code the Recorder gave you, or type its code.</p><div class="toolbar"><button class="btn" data-act="code-dialog">Enter official code</button></div></section></div>';
+    '<section class="band"><h2 class="sec-h">Officiating a race?</h2><p class="off-note">You do not need an account. Scan the QR code the Recorder gave you, or type its code.</p><div class="toolbar"><button class="btn" data-act="code-dialog">Enter official code</button></div></section>' +
+    '<section class="band"><h2 class="sec-h">Watching from a screen?</h2><p class="off-note">The DQ Board needs no account. Type the meet code shown on its Setup tab.</p><div class="toolbar"><button class="btn" data-act="board-code-dialog">View a DQ Board</button></div></section></div>';
 }
 function signinHTML(){
   if (!S.standalone) return '<div class="home"><section class="band"><h2 class="sec-h">Sign in to continue</h2><p class="lead">This page could not tell who you are. Sign in to Claude, then reload this page.</p></section></div>';
   return '<div class="home"><section class="band"><h2 class="sec-h">Sign in</h2>' + (S.linkSent
     ? '<p class="lead">Check your inbox.</p><p class="off-note">We sent a sign-in link to <b>' + esc(S.linkSent) + '</b>. Open it on this device to finish. It can take a minute and may land in spam.</p><div class="toolbar"><button class="btn" data-act="link-again">Use a different email</button></div>'
     : '<p class="lead">Organizers sign in with an email address. We email you a link, so there is no password.</p><label class="dlg-l" for="si-email">Email address</label><input id="si-email" class="qr-link" type="email" autocomplete="email" placeholder="you@example.org"><div class="toolbar"><button class="btn primary" data-act="send-link">Email me a sign-in link</button></div>') + '</section>' +
-    '<section class="band"><h2 class="sec-h">Officiating a race?</h2><p class="off-note">You do not need to sign in. Scan the QR code the Recorder gave you, or type its code.</p><div class="toolbar"><button class="btn" data-act="code-dialog">Enter official code</button></div></section></div>';
+    '<section class="band"><h2 class="sec-h">Officiating a race?</h2><p class="off-note">You do not need to sign in. Scan the QR code the Recorder gave you, or type its code.</p><div class="toolbar"><button class="btn" data-act="code-dialog">Enter official code</button></div></section>' +
+    '<section class="band"><h2 class="sec-h">Watching from a screen?</h2><p class="off-note">The DQ Board needs no account. Type the meet code shown on its Setup tab.</p><div class="toolbar"><button class="btn" data-act="board-code-dialog">View a DQ Board</button></div></section></div>';
 }
 function meetCardHTML(m, archived){
   var when = m.date ? esc(fmtDate(m.date)) : 'No date';
@@ -3832,7 +3885,8 @@ function homeHTML(){
     (S.legacyFound ? '<section class="band"><h2 class="sec-h">A meet from before accounts</h2><p class="off-note">' + (S.legacyName ? '&ldquo;' + esc(S.legacyName) + '&rdquo; was set up before accounts existed.' : 'A meet was set up before accounts existed.') + ' Import it into your account to keep working on it. Its old QR codes stop working, and the new ones carry over.</p><div class="toolbar"><button class="btn" data-act="import-legacy"' + (S.canWrite ? '' : ' disabled') + '>Import this meet</button></div></section>' : '') +
     '<section class="band"><h2 class="sec-h">Archived meets <span class="count">' + arc.length + '</span></h2>' +
     (arc.length ? '<ul class="mlist arch">' + arc.map(function(m){ return meetCardHTML(m, true); }).join('') + '</ul>' : '<p class="off-note">Meets you archive, and your previous meets when you start a new one, are kept here. They are read-only until you restore them.</p>') + '</section>' +
-    '<section class="band"><h2 class="sec-h">Officiating a race?</h2><p class="off-note">Officials do not need an account. Scan the QR code the Recorder gave you, or type its code. To give an official their code, open a meet, go to a judge&rsquo;s tab and show its QR code.</p><div class="toolbar"><button class="btn" data-act="code-dialog">Enter official code</button></div></section></div>';
+    '<section class="band"><h2 class="sec-h">Officiating a race?</h2><p class="off-note">Officials do not need an account. Scan the QR code the Recorder gave you, or type its code. To give an official their code, open a meet, go to a judge&rsquo;s tab and show its QR code.</p><div class="toolbar"><button class="btn" data-act="code-dialog">Enter official code</button></div></section>' +
+    '<section class="band"><h2 class="sec-h">Watching from a screen?</h2><p class="off-note">The DQ Board needs no account. Type the meet code shown on its Setup tab.</p><div class="toolbar"><button class="btn" data-act="board-code-dialog">View a DQ Board</button></div></section></div>';
 }
 function accountHTML(){
   if (S.screen === 'signin') return signinHTML();
@@ -3877,6 +3931,11 @@ function parseOfficial(h){
   if (m) return {u:m[1], m:m[2], n:+m[3], token:m[4].toUpperCase(), race:m[5] || null};
   m = /^official-(1[0-2]|[1-9])-([A-Za-z0-9]{4,12})(?:\/(d\d{1,2}h\d{1,2}))?$/.exec(h);         // a link from before accounts
   return m ? {u:null, m:null, n:+m[1], token:m[2].toUpperCase(), race:m[3] || null} : null;
+}
+// A DQ Board link always names the owner and meet: it has no judge, and no secret code to check.
+function parseBoard(h){
+  var m = /^dqboard\/([A-Za-z0-9_.~:@+-]+)\/([A-Za-z0-9_.~:@+-]+)$/.exec(h || '');
+  return m ? {u:m[1], m:m[2]} : null;
 }
 function parseCode(t){
   // codes name an official (J3, AC1 or AC2, or PZM for the Penalty Zone Manager), optionally led by the meet's short code
@@ -3958,6 +4017,28 @@ async function acceptOfficial(o){
   }
   return acceptOfficialSync(o);
 }
+// Opens the DQ Board for the meet with this short code, the same code used in typed official codes.
+// This is the reliable way in on the Claude-hosted copy, where a link's #dqboard hash does not survive
+// a fresh visit (the artifact page does not carry it through), unlike the standalone site.
+async function openBoardByCode(code){
+  var tg = await lookupJoin(code);
+  if (!tg) { toast('That code was not recognized.'); return false; }
+  S.pendingBoard = null; S.board = true;
+  openBoard(tg.u, tg.m);
+  return true;
+}
+function openBoardCodeDialog(){
+  openDialog({
+    title:'View a DQ Board',
+    body:'<p>Type the meet code shown in the DQ Board section on the Setup tab, for example H4T9K.</p><input id="board-code-in" class="qr-link" autocomplete="off" autocapitalize="characters" maxlength="5" placeholder="H4T9K">',
+    ok:'View board',
+    onOk:function(){
+      var code = ($('#board-code-in').value || '').trim().toUpperCase();
+      if (!/^[A-Z0-9]{5}$/.test(code)) { toast('That does not look like a meet code. It reads like H4T9K.'); return false; }
+      openBoardByCode(code);
+    }
+  });
+}
 function openCodeDialog(){
   openDialog({
     title:'Enter official code',
@@ -3989,6 +4070,7 @@ function loadLocal(){
   }
 }
 function goLocal(){
+  if (S.board) { S.mode = 'local'; S.started = true; S.mainExists = false; render(); return; }      // a DQ Board needs live data; there is nothing to show on this device alone
   S.mode = 'local'; S.started = true; S.screen = 'meet';
   var ev = LS.get(KEY + 'event');
   applyMain(ev ? jparse(ev) : null);
@@ -4041,6 +4123,7 @@ function fitGrid(){
   w.style.setProperty('--wrap-h', Math.max(280, Math.floor(window.innerHeight - top - 12)) + 'px');
 }
 function render(){
+  if (S.board) { try { document.title = 'DQ Board' + (meet.name ? ' \u2013 ' + meet.name : ''); } catch(e){} setHTML($('#app'), boardHTML()); return; }
   if (S.screen !== 'meet') { renderAccount(); return; }
   if (S.tab === 'penalty' && S.started && !usePZ() && !S.official) { S.tab = 'recorder'; LS.set(KEY + 'tab', S.tab); }     // turned off while it was open
   var ui = captureUI();
@@ -4271,6 +4354,31 @@ function go(id, fromHash){
   }
 }
 
+/* ---------- The DQ Board: a public, read-only page for a TV or projector ---------- */
+function boardShell(inner){ return '<div class="board" role="main">' + inner + '</div>'; }
+function boardHTML(){
+  if (!S.started) return boardShell('<p class="board-msg">Loading&hellip;</p>');
+  if (S.mainExists === false) return boardShell('<p class="board-msg">This DQ Board link is not working.<br>Ask the Recorder for a new one.</p>');
+  var idk = boardId(), label = boardIdLabel();
+  var rows = S.event.athletes.map(function(a, i){
+    var v = idk === 'hip' ? a.hip : a.bib, n = parseInt(v, 10);
+    return {a:a, i:i, n:isFinite(n) ? n : Infinity, v:v};
+  });
+  rows.sort(function(x, y){ return x.n - y.n || x.i - y.i; });
+  var heat = inHeats() ? raceLabel(S.raceId) : '';
+  var cards = rows.map(function(r){
+    var c = redCount(r.a.id), st = status(c, r.a.id), chips = stChips(r.a.id, st);
+    return '<div class="board-card' + (c > 0 ? ' hot' : '') + (st === 'dq' ? ' dq' : '') + '">' +
+      '<div class="board-num">' + (esc(r.v) || '&ndash;') + '</div>' +
+      '<div class="board-rc"><span class="board-rc-n">' + c + '</span><span class="board-rc-l">red card' + (c === 1 ? '' : 's') + '</span></div>' +
+      (chips ? '<div class="board-chips">' + chips + '</div>' : '') + '</div>';
+  }).join('');
+  return boardShell(
+    '<div class="board-head"><h1>DQ Board</h1><div class="board-sub">' + (esc(meet.name) || 'Race Walk Officiating') + (meet.date ? ' &middot; ' + esc(fmtDate(meet.date)) : '') + (heat ? ' &middot; ' + esc(heat) : '') + '</div></div>' +
+    (rows.length ? '<div class="board-grid" aria-label="' + esc(label) + ' and red cards">' + cards + '</div>' : '<p class="board-msg">No athletes are entered for this race yet.</p>')
+  );
+}
+
 /* ---------- Views ---------- */
 function penaltyHTML(){
   var pit = S.event.pit;
@@ -4363,6 +4471,7 @@ function howtoHTML(){
       '<li>When you start a new meet, your previous meets are archived, unless you untick that option. Archived meets are read-only, for everyone including officials, and can be exported or restored at any time.</li>' +
       '<li>Officials do not need an account. They scan the QR code on their judge tab, or type its code.</li>' +
       '<li>Export meet data on the Setup tab saves a meet as a backup file. Import from file on My meets restores it, in this copy of the app or another.</li>' +
+      '<li>The DQ Board, on the Setup tab, is a public scoreboard for a TV or projector: every athlete&rsquo;s hip or bib # and red cards, in number order, with no sign-in needed. Cast the link to a Chromecast from Chrome, or open it full-screen over HDMI. On the Claude-hosted copy, if the link does not go straight to the board, choose &ldquo;View a DQ Board&rdquo; on the sign-in or My meets screen and type the meet code shown there instead.</li>' +
     '</ul></section>' +
 
     '<section class="rule"><h3>Opening and closing races<small>Recorder tab</small></h3><ul>' +
@@ -4579,9 +4688,14 @@ function idBandHTML(){
     var on = v === 'hip' ? useHip() : useBib();
     return '<label class="chk"><input type="checkbox" data-act="id-opt" data-v="' + v + '" data-f="id:' + v + '"' + (on ? ' checked' : '') + dis + '><span>' + label + '<small>' + hint + '</small></span></label>';
   }
+  var dqPick = useHip() && useBib()
+    ? '<div class="rf-opts dq-id-opt" role="group" aria-label="Number shown on the DQ Board">' +
+        ['hip', 'bib'].map(function(v){ return '<button type="button" class="pz-opt" role="radio" aria-checked="' + (boardId() === v) + '" data-act="dq-id" data-v="' + v + '" data-f="dqid:' + v + '"' + dis + '>' + (v === 'hip' ? 'Hip #' : 'Bib #') + '</button>'; }).join('') + '</div>'
+    : '';
   return '<section class="band noprint"><h2 class="sec-h">Athlete identification</h2>' +
     '<div class="rf-opts" role="group" aria-label="Athlete identification">' + opt('hip', 'Hip #', 'Hip or lane number') + opt('bib', 'Bib #', 'Number on the bib') + '</div>' +
-    '<p class="rf-note">Choose how athletes are identified. Only what you select is shown on the Recorder, Red Cards and judge tabs and in exports, and at least one must stay selected. Numbers you have already entered are kept if you turn one off.</p></section>';
+    '<p class="rf-note">Choose how athletes are identified. Only what you select is shown on the Recorder, Red Cards and judge tabs and in exports, and at least one must stay selected. Numbers you have already entered are kept if you turn one off.</p>' +
+    '<p class="rf-note dq-id-note"><b>DQ Board:</b> ' + (dqPick ? 'shows athletes by' : 'will show athletes by ' + boardIdLabel() + ', the only number in use.') + '</p>' + dqPick + '</section>';
 }
 function officialCodesHTML(){
   var dis = ro() ? ' disabled' : '', l = (S.event.shareLink || '').trim(), bad = l && !/^https?:\/\//i.test(l);
@@ -4591,6 +4705,23 @@ function officialCodesHTML(){
     (bad ? '<p class="warn">That does not look like a web link, so the default link is used instead.</p>' : '') +
     '<div class="toolbar"><button class="btn danger" data-act="new-codes"' + dis + '>Create new codes</button></div>' +
     '<p class="rf-note">Creating new codes stops every earlier QR code and typed code from working, including on devices that are using one now.</p></section>';
+}
+function dqBoardHTML(){
+  if (!(S.acct && S.acct.meetId && !S.acct.legacy)) return '';
+  var link = boardLink(), open = S.dqOpen, code = (S.metaDoc && S.metaDoc.code) || '';
+  var h = '<section class="band noprint"><h2 class="sec-h">DQ Board</h2>' +
+    '<p class="off-note">A public, read-only scoreboard for a TV, projector or Chromecast. It lists every athlete by ' + esc(boardIdLabel()).toLowerCase() + ', in number order, with their red cards. No sign-in is needed to view it.</p>' +
+    (S.standalone ? '' : '<p class="warn">On this Claude-hosted copy, opening the link fresh (scanning it, or casting it) often lands on the sign-in or My meets screen instead of the board, because the link&rsquo;s address is not carried into the page. If that happens, choose &ldquo;View a DQ Board&rdquo; there and type the meet code below.</p>') +
+    (code ? '<p class="qr-code">Meet code <b>' + esc(code) + '</b></p>' : '') +
+    '<button type="button" class="btn" data-act="dq-toggle" aria-expanded="' + open + '">' + (open ? 'Hide' : 'Show') + ' the DQ Board link</button>';
+  if (!open) return h + '</section>';
+  return h + '<div class="qr-body"><div class="qr-img">' + qrSvg(link, 220) + '</div><div class="qr-info">' +
+    '<p class="qr-lead"><b>Scan to open the DQ Board on a TV, tablet or laptop.</b> Anyone with this link can view it; nobody can change anything from it.</p>' +
+    '<label class="sr" for="dq-link">DQ Board link</label><input id="dq-link" class="qr-link" readonly value="' + esc(link) + '" data-f="dq-link">' +
+    '<div class="toolbar"><button type="button" class="btn sm" data-act="dq-copy">Copy link</button><a class="btn sm" href="' + esc(link) + '" target="_blank" rel="noopener">Open</a></div>' +
+    '<p class="qr-note">To cast it to a Chromecast: open the link in Chrome, then use Chrome&rsquo;s Cast option to send that tab to the TV. Over HDMI, open the link and use the browser&rsquo;s full-screen mode.</p>' +
+    (S.standalone ? '' : '<p class="qr-note">On the Claude-hosted copy, if the link does not go straight to the board, go to the sign-in or My meets screen instead, choose &ldquo;View a DQ Board&rdquo;, and type the meet code ' + (code ? '<b>' + esc(code) + '</b>' : 'shown above') + '.</p>') +
+    (S.mode === 'local' ? '<p class="qr-note">Live sync is not available in this view, so the DQ Board would not see this meet.</p>' : '') + '</div></div></section>';
 }
 function setupHTML(){
   var ev = S.event, dis = ro() ? ' disabled' : '';
@@ -4613,6 +4744,7 @@ function setupHTML(){
     '</div>' + judgePickHTML() + '</section>' +
     officialsHTML() +
     officialCodesHTML() +
+    dqBoardHTML() +
     meetManageHTML() +
     '<section class="band noprint"><h2 class="sec-h">Race data</h2>' +
       '<div class="toolbar"><button class="btn" data-act="sample"' + dis + '>Load sample race</button>' +
@@ -5536,6 +5668,12 @@ document.addEventListener('click', function(e){
       b.checked = S.event.usePZ;
       break;
     }
+    case 'dq-id': {
+      if (ro()) break;
+      S.event.dqId = b.dataset.v;
+      queueMeet(200); render();
+      break;
+    }
     case 'id-opt': {
       if (ro()) break;
       var idk = b.dataset.v === 'hip' ? 'useHip' : 'useBib', idother = idk === 'useHip' ? 'useBib' : 'useHip';
@@ -5569,6 +5707,7 @@ document.addEventListener('click', function(e){
     }
     case 'off-exit': exitOfficial(); break;
     case 'code-dialog': openCodeDialog(); break;
+    case 'board-code-dialog': openBoardCodeDialog(); break;
     case 'qr-toggle': S.qrOpen = !S.qrOpen; if (S.qrOpen) ensureCodes(); render(); break;
     case 'qr-copy': {
       var qel = $('#qr-link'); if (!qel) break;
@@ -5583,6 +5722,8 @@ document.addEventListener('click', function(e){
       confirmDlg('Create new codes?', 'This replaces the code for all nine judges. Every earlier QR code and typed code stops working, including on devices that are using one now.', 'Create new codes', function(){ replaceCodes(); render(); toast('New codes created.'); });
       break;
     case 'import-pick': { var pf = $('#imp-file'); if (pf) pf.click(); break; }
+    case 'dq-toggle': S.dqOpen = !S.dqOpen; render(); break;
+    case 'dq-copy': { var dqi = $('#dq-link'); if (dqi) { dqi.select(); try { document.execCommand('copy'); } catch(e){} try { navigator.clipboard && navigator.clipboard.writeText(dqi.value); } catch(e){} toast('Link copied.'); } break; }
     case 'export-meet': exportMeet(); break;
     case 'signup': signUp(); break;
     case 'send-link': {
@@ -5743,10 +5884,11 @@ window.addEventListener('resize', fitGrid);
 (function init(){
   var h = ''; try { h = (location.hash || '').slice(1); } catch(e){}
   var saved = LS.get(KEY + 'tab');
-  var hp = h.split('/'), po = parseOfficial(h);
+  var hp = h.split('/'), po = parseOfficial(h), bo = parseBoard(h);
   S.tab = validTab(hp[0]) ? hp[0] : validTab(saved) ? saved : 'howto';
   wantRace = hp[1] || LS.get(KEY + 'race');
   if (po) { S.pendingOff = po; S.tab = tabFor(po.n); if (po.race) wantRace = po.race; }   // opened from a judge's QR code
+  else if (bo) { S.pendingBoard = bo; S.board = true; }                                    // opened from the DQ Board link
   try {
     var mq = window.matchMedia('(max-width: 720px)');
     S.narrow = mq.matches;
