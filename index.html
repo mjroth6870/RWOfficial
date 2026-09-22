@@ -180,21 +180,19 @@ main{padding:0 16px 56px}
 .jp-sep{flex:none;width:16px}
 .dq-id-opt{margin-top:6px}
 .dq-id-note{margin-top:2px}
-.board{min-height:100dvh;padding:28px 32px 48px;background:var(--bg);color:var(--ink)}
+.board{height:100dvh;box-sizing:border-box;padding:28px 32px 20px;background:var(--bg);color:var(--ink);display:flex;flex-direction:column;overflow:hidden}
 .board-head{margin-bottom:26px}
 .board-head h1{margin:0 0 6px;font:800 clamp(28px,4vw,52px)/1 var(--cond);letter-spacing:.02em}
 .board-sub{font-size:clamp(15px,1.6vw,22px);color:var(--muted)}
 .board-msg{margin-top:18vh;font-size:clamp(20px,3vw,32px);text-align:center;color:var(--muted)}
-.board-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:20px}
-.board-card{background:var(--surface);border:3px solid var(--line-strong);border-radius:20px;padding:26px 10px;text-align:center}
-.board-card.hot{border-color:var(--red)}
-.board-card.dq{background:var(--red-soft);border-color:var(--red)}
-.board-num{font:800 clamp(28px,4vw,46px)/1 var(--cond);letter-spacing:.02em}
-.board-rc{margin-top:8px}
-.board-rc-n{font:800 clamp(22px,3.4vw,38px)/1 var(--cond);color:var(--red-ink)}
-.board-card:not(.hot):not(.dq) .board-rc-n{color:var(--muted)}
-.board-rc-l{display:block;font-size:clamp(11px,1vw,14px);color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
-.board-chips{margin-top:8px;display:flex;justify-content:center;gap:4px;flex-wrap:wrap}
+.board-head{flex:none}
+.board-list{flex:1 1 auto;min-height:0;overflow:auto;column-width:min(300px,90vw);column-gap:16px;column-fill:auto}
+.board-row{display:flex;align-items:center;gap:10px;padding:clamp(6px,1vh,14px) 0;border-bottom:1px solid var(--line);break-inside:avoid-column;-webkit-column-break-inside:avoid}
+.board-n{flex:none;min-width:2.2em;text-align:right;font:800 clamp(22px,4.4vh,40px)/1 var(--cond);letter-spacing:.02em;font-variant-numeric:tabular-nums}
+.board-row.dq .board-n{color:var(--red-ink)}
+.board-cards{flex:1 1 auto;display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-height:1em}
+.board-chip{min-width:clamp(24px,4vh,36px);height:clamp(24px,4vh,36px);font-size:clamp(14px,2.4vh,22px);border-radius:6px}
+.board-status{flex:none;display:flex;gap:4px}
 .apick[disabled]{opacity:.5;cursor:not-allowed}
 .apick.pzm{min-width:64px}
 .pzm-line{display:flex;align-items:center;gap:10px;margin:8px 0}
@@ -3421,7 +3419,20 @@ var BLANK = {y1:'', y2:'', rc:'', rt:'', dn:'', lc:'', lt:'', pza:'', pzr:'', pz
 function getEntry(n, aid){ return S.entries[n][aid] || BLANK; }
 function ent(n, aid){ return S.entries[n][aid] || (S.entries[n][aid] = {y1:'', y2:'', rc:'', rt:'', dn:'', lc:'', lt:'', pza:'', pzr:'', pzd:'', pzv:''}); }
 function findAth(id){ for (var i = 0; i < S.event.athletes.length; i++) if (S.event.athletes[i].id === id) return S.event.athletes[i]; return null; }
-function redCount(aid){ var c = 0; for (var n = 1; n <= NMAIN; n++) { if (!isActive(n)) continue; var e = S.entries[n][aid]; if (e && (e.rc || (n === 1 && l100On() && e.lc))) c++; } return c; }   // a judge counts once, even with both a red card and a last 100m card
+// Every red card an athlete has, in judge order: the mark the judge gave ('>' bent knee, '~' loss of contact).
+// A judge contributes at most one mark, even with both a red card and a last 100m card (mirrors redCount's own logic).
+function redSymbols(aid){
+  var out = [];
+  for (var n = 1; n <= NMAIN; n++) {
+    if (!isActive(n)) continue;
+    var e = S.entries[n][aid];
+    if (!e) continue;
+    if (e.rc) out.push(e.rc);
+    else if (n === 1 && l100On() && e.lc) out.push(e.lc);
+  }
+  return out;
+}
+function redCount(aid){ return redSymbols(aid).length; }
 function status(c, aid){
   if (aid && chiefDQ(aid)) return 'dq';
   if (c >= S.event.dq) return 'dq';
@@ -4366,16 +4377,16 @@ function boardHTML(){
   });
   rows.sort(function(x, y){ return x.n - y.n || x.i - y.i; });
   var heat = inHeats() ? raceLabel(S.raceId) : '';
-  var cards = rows.map(function(r){
-    var c = redCount(r.a.id), st = status(c, r.a.id), chips = stChips(r.a.id, st);
-    return '<div class="board-card' + (c > 0 ? ' hot' : '') + (st === 'dq' ? ' dq' : '') + '">' +
-      '<div class="board-num">' + (esc(r.v) || '&ndash;') + '</div>' +
-      '<div class="board-rc"><span class="board-rc-n">' + c + '</span><span class="board-rc-l">red card' + (c === 1 ? '' : 's') + '</span></div>' +
-      (chips ? '<div class="board-chips">' + chips + '</div>' : '') + '</div>';
+  var items = rows.map(function(r){
+    var syms = redSymbols(r.a.id), st = status(syms.length, r.a.id), chips = stChips(r.a.id, st);
+    return '<div class="board-row' + (syms.length ? ' hot' : '') + (st === 'dq' ? ' dq' : '') + '">' +
+      '<span class="board-n">' + (esc(r.v) || '&ndash;') + '</span>' +
+      '<span class="board-cards">' + syms.map(function(v){ return '<span class="chip-rc board-chip">' + esc(v) + '</span>'; }).join('') + '</span>' +
+      (chips ? '<span class="board-status">' + chips + '</span>' : '') + '</div>';
   }).join('');
   return boardShell(
     '<div class="board-head"><h1>DQ Board</h1><div class="board-sub">' + (esc(meet.name) || 'Race Walk Officiating') + (meet.date ? ' &middot; ' + esc(fmtDate(meet.date)) : '') + (heat ? ' &middot; ' + esc(heat) : '') + '</div></div>' +
-    (rows.length ? '<div class="board-grid" aria-label="' + esc(label) + ' and red cards">' + cards + '</div>' : '<p class="board-msg">No athletes are entered for this race yet.</p>')
+    (rows.length ? '<div class="board-list" aria-label="' + esc(label) + ' and red cards">' + items + '</div>' : '<p class="board-msg">No athletes are entered for this race yet.</p>')
   );
 }
 
