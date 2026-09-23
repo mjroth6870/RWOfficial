@@ -186,12 +186,15 @@ main{padding:0 16px 56px}
 .board-sub{font-size:clamp(15px,1.6vw,22px);color:var(--muted)}
 .board-msg{margin-top:18vh;font-size:clamp(20px,3vw,32px);text-align:center;color:var(--muted)}
 .board-head{flex:none}
-.board-list{flex:1 1 auto;min-height:0;overflow:auto;column-width:min(300px,90vw);column-gap:16px;column-fill:auto}
-.board-row{display:flex;align-items:center;gap:10px;padding:clamp(6px,1vh,14px) 0;border-bottom:1px solid var(--line);break-inside:avoid-column;-webkit-column-break-inside:avoid}
-.board-n{flex:none;min-width:2.2em;text-align:right;font:800 clamp(22px,4.4vh,40px)/1 var(--cond);letter-spacing:.02em;font-variant-numeric:tabular-nums}
+.board-list{flex:1 1 auto;min-height:0;display:grid;grid-auto-flow:column;
+  grid-template-rows:repeat(var(--board-rows,10),var(--board-row-h,60px));
+  grid-template-columns:repeat(var(--board-cols,1),var(--board-col-w,300px));
+  column-gap:16px;overflow-x:auto;overflow-y:hidden}
+.board-row{display:flex;align-items:center;gap:calc(var(--board-row-h,60px) * .16);padding-right:calc(var(--board-row-h,60px) * .16);border-bottom:1px solid var(--line);min-width:0;max-width:100%;overflow:hidden}
+.board-n{flex:none;min-width:2.2em;text-align:right;font:800 calc(var(--board-row-h,60px) * .52)/1 var(--cond);letter-spacing:.02em;font-variant-numeric:tabular-nums}
 .board-row.dq .board-n{color:var(--red-ink)}
-.board-cards{flex:1 1 auto;display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-height:1em}
-.board-chip{min-width:clamp(24px,4vh,36px);height:clamp(24px,4vh,36px);font-size:clamp(14px,2.4vh,22px);border-radius:6px}
+.board-cards{flex:1 1 auto;display:flex;align-items:center;gap:calc(var(--board-row-h,60px) * .08);flex-wrap:wrap;min-height:1em;overflow:hidden}
+.board-chip{min-width:calc(var(--board-row-h,60px) * .55);height:calc(var(--board-row-h,60px) * .55);font-size:calc(var(--board-row-h,60px) * .3);border-radius:calc(var(--board-row-h,60px) * .1)}
 .board-status{flex:none;display:flex;gap:4px}
 .apick[disabled]{opacity:.5;cursor:not-allowed}
 .apick.pzm{min-width:64px}
@@ -3132,7 +3135,7 @@ function fmtDate(s){
 /* ================================================================
    State
    ================================================================ */
-var MEET_KEYS = ['name', 'date', 'distance', 'location', 'courseLength', 'courseCert', 'raceMode', 'meetType', 'useHip', 'useBib', 'usePZ', 'dqId', 'keys', 'shareLink', 'statuses', 'divCount', 'divisions'];               // shared by every race
+var MEET_KEYS = ['name', 'date', 'distance', 'location', 'courseLength', 'courseCert', 'raceMode', 'meetType', 'useHip', 'useBib', 'usePZ', 'dqId', 'boardRows', 'keys', 'shareLink', 'statuses', 'divCount', 'divisions'];               // shared by every race
 var RACE_KEYS = ['recorder', 'recorderCert', 'judges', 'active', 'supervisory', 'last100', 'athletes', 'dq', 'pit'];  // one set per race
 
 function blankMeet(){
@@ -3140,7 +3143,7 @@ function blankMeet(){
   for (var k = 0; k < MAXDIV; k++) dv.push({name:'', heats:1, custom:false});
   var ks = [];
   for (var q = 0; q < NJ; q++) ks.push('');
-  return {name:'', date:'', distance:'', location:'', courseLength:'', courseCert:'', raceMode:'combined', meetType:'', useHip:true, useBib:true, usePZ:false, dqId:'', keys:ks, shareLink:'', statuses:{}, divCount:2, divisions:dv};
+  return {name:'', date:'', distance:'', location:'', courseLength:'', courseCert:'', raceMode:'combined', meetType:'', useHip:true, useBib:true, usePZ:false, dqId:'', boardRows:0, keys:ks, shareLink:'', statuses:{}, divCount:2, divisions:dv};
 }
 function blankRace(){
   var j = [], on = [];
@@ -3372,6 +3375,7 @@ function normMeet(d){
   if (!e.useHip && !e.useBib) e.useHip = true;
   e.usePZ = d.usePZ === true;                 // the Penalty Zone tab is off unless the Recorder turns it on
   e.dqId = d.dqId === 'hip' || d.dqId === 'bib' ? d.dqId : '';   // which number the DQ Board shows, when both are in use
+  e.boardRows = toInt(d.boardRows, 0, 200, 0);                // a fixed rows-per-column for the DQ Board; 0 = size it automatically
   for (var kk = 0; kk < NJ; kk++) e.keys[kk] = Array.isArray(d.keys) ? str(d.keys[kk]).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12) : '';
   e.shareLink = str(d.shareLink);
   e.statuses = {};
@@ -4134,7 +4138,7 @@ function fitGrid(){
   w.style.setProperty('--wrap-h', Math.max(280, Math.floor(window.innerHeight - top - 12)) + 'px');
 }
 function render(){
-  if (S.board) { try { document.title = 'DQ Board' + (meet.name ? ' \u2013 ' + meet.name : ''); } catch(e){} setHTML($('#app'), boardHTML()); return; }
+  if (S.board) { try { document.title = 'DQ Board' + (meet.name ? ' \u2013 ' + meet.name : ''); } catch(e){} setHTML($('#app'), boardHTML()); layoutBoard(); return; }
   if (S.screen !== 'meet') { renderAccount(); return; }
   if (S.tab === 'penalty' && S.started && !usePZ() && !S.official) { S.tab = 'recorder'; LS.set(KEY + 'tab', S.tab); }     // turned off while it was open
   var ui = captureUI();
@@ -4367,6 +4371,32 @@ function go(id, fromHash){
 
 /* ---------- The DQ Board: a public, read-only page for a TV or projector ---------- */
 function boardShell(inner){ return '<div class="board" role="main">' + inner + '</div>'; }
+// Sizes the DQ Board's grid after it is in the page: a fixed number of rows per column if the Recorder set one,
+// otherwise the number that best fills the screen, then a row height (and so a font size) that exactly fills
+// the available height with that many rows. Runs after every board render, and again if the window resizes.
+// A column needs to be at least this many times taller than it is tall-per-row, or a big number (and its red cards) will
+// not fit beside it. Below this, fewer/wider columns are used instead, even in automatic sizing.
+var BOARD_MIN_COL_RATIO = 2.6;
+function layoutBoard(){
+  if (!S.board) return;
+  var list = document.querySelector('.board-list');
+  if (!list) return;
+  var rows = list.children.length;
+  if (!rows) return;
+  var h = list.clientHeight, w = list.clientWidth;
+  if (!h || !w) return;
+  var manual = +S.event.boardRows || 0;
+  var cols = manual > 0 ? Math.max(1, Math.ceil(rows / manual)) : Math.max(1, Math.floor(w / 280));
+  var rpc = manual > 0 ? manual : Math.max(1, Math.ceil(rows / cols));
+  // shrink toward fewer, wider columns (bigger rows, so more rows per column) until each column is wide enough for its content
+  while (cols > 1 && (w / cols) < (h / rpc) * BOARD_MIN_COL_RATIO) { cols--; rpc = manual > 0 ? manual : Math.max(1, Math.ceil(rows / cols)); }
+  list.style.setProperty('--board-rows', rpc);
+  list.style.setProperty('--board-cols', cols);
+  list.style.setProperty('--board-row-h', (h / rpc) + 'px');
+  list.style.setProperty('--board-col-w', (w / cols) + 'px');
+}
+window.__layoutBoard = layoutBoard;   // exposed so a test harness (jsdom has no real layout engine) can exercise the sizing arithmetic directly
+(function(){ var t = null; window.addEventListener('resize', function(){ clearTimeout(t); t = setTimeout(layoutBoard, 150); }); })();
 function boardHTML(){
   if (!S.started) return boardShell('<p class="board-msg">Loading&hellip;</p>');
   if (S.mainExists === false) return boardShell('<p class="board-msg">This DQ Board link is not working.<br>Ask the Recorder for a new one.</p>');
@@ -4482,7 +4512,7 @@ function howtoHTML(){
       '<li>When you start a new meet, your previous meets are archived, unless you untick that option. Archived meets are read-only, for everyone including officials, and can be exported or restored at any time.</li>' +
       '<li>Officials do not need an account. They scan the QR code on their judge tab, or type its code.</li>' +
       '<li>Export meet data on the Setup tab saves a meet as a backup file. Import from file on My meets restores it, in this copy of the app or another.</li>' +
-      '<li>The DQ Board, on the Setup tab, is a public scoreboard for a TV or projector: every athlete&rsquo;s hip or bib # and red cards, in number order, with no sign-in needed. Cast the link to a Chromecast from Chrome, or open it full-screen over HDMI. On the Claude-hosted copy, if the link does not go straight to the board, choose &ldquo;View a DQ Board&rdquo; on the sign-in or My meets screen and type the meet code shown there instead.</li>' +
+      '<li>The DQ Board, on the Setup tab, is a public scoreboard for a TV or projector: every athlete&rsquo;s hip or bib # and red cards, in number order, with no sign-in needed. Cast the link to a Chromecast from Chrome, or open it full-screen over HDMI. It sizes its own text to fill the screen automatically; set Rows per column there to fix it at a specific number of rows instead, for example to force bigger text on a small field. On the Claude-hosted copy, if the link does not go straight to the board, choose &ldquo;View a DQ Board&rdquo; on the sign-in or My meets screen and type the meet code shown there instead.</li>' +
     '</ul></section>' +
 
     '<section class="rule"><h3>Opening and closing races<small>Recorder tab</small></h3><ul>' +
@@ -4719,7 +4749,7 @@ function officialCodesHTML(){
 }
 function dqBoardHTML(){
   if (!(S.acct && S.acct.meetId && !S.acct.legacy)) return '';
-  var link = boardLink(), open = S.dqOpen, code = (S.metaDoc && S.metaDoc.code) || '';
+  var link = boardLink(), open = S.dqOpen, code = (S.metaDoc && S.metaDoc.code) || '', dis = ro() ? ' disabled' : '';
   var h = '<section class="band noprint"><h2 class="sec-h">DQ Board</h2>' +
     '<p class="off-note">A public, read-only scoreboard for a TV, projector or Chromecast. It lists every athlete by ' + esc(boardIdLabel()).toLowerCase() + ', in number order, with their red cards. No sign-in is needed to view it.</p>' +
     (S.standalone ? '' : '<p class="warn">On this Claude-hosted copy, opening the link fresh (scanning it, or casting it) often lands on the sign-in or My meets screen instead of the board, because the link&rsquo;s address is not carried into the page. If that happens, choose &ldquo;View a DQ Board&rdquo; there and type the meet code below.</p>') +
@@ -4732,7 +4762,10 @@ function dqBoardHTML(){
     '<div class="toolbar"><button type="button" class="btn sm" data-act="dq-copy">Copy link</button><a class="btn sm" href="' + esc(link) + '" target="_blank" rel="noopener">Open</a></div>' +
     '<p class="qr-note">To cast it to a Chromecast: open the link in Chrome, then use Chrome&rsquo;s Cast option to send that tab to the TV. Over HDMI, open the link and use the browser&rsquo;s full-screen mode.</p>' +
     (S.standalone ? '' : '<p class="qr-note">On the Claude-hosted copy, if the link does not go straight to the board, go to the sign-in or My meets screen instead, choose &ldquo;View a DQ Board&rdquo;, and type the meet code ' + (code ? '<b>' + esc(code) + '</b>' : 'shown above') + '.</p>') +
-    (S.mode === 'local' ? '<p class="qr-note">Live sync is not available in this view, so the DQ Board would not see this meet.</p>' : '') + '</div></div></section>';
+    (S.mode === 'local' ? '<p class="qr-note">Live sync is not available in this view, so the DQ Board would not see this meet.</p>' : '') +
+    '<div class="field board-rows-field"><label for="f-boardrows">Rows per column</label><input id="f-boardrows" type="number" inputmode="numeric" min="1" max="200" data-bind="ev" data-k="boardRows" data-f="ev:boardRows" value="' + (S.event.boardRows || '') + '" placeholder="Auto"' + dis + '>' +
+      '<small>Leave blank to size the board automatically, using the biggest text that fits everyone on screen. Set a number to use exactly that many rows in each column instead &mdash; useful to force bigger text for a small field. A very small number may need the board to scroll sideways.</small></div>' +
+    '</div></div></section>';
 }
 function setupHTML(){
   var ev = S.event, dis = ro() ? ' disabled' : '';
@@ -5814,7 +5847,7 @@ document.addEventListener('input', function(e){
   if (!b || (b === 'ent' ? roEnt() : ro())) return;
   var k = t.dataset.k;
   if (b === 'ev') {
-    if (k === 'dq' || k === 'pit' || k === 'divCount') return;           // handled on change
+    if (k === 'dq' || k === 'pit' || k === 'divCount' || k === 'boardRows') return;           // handled on change
     S.event[k] = t.value; qEv(k, 500);
     if (k === 'name' || k === 'date') renderHeader();
   } else if (b === 'div') {
@@ -5856,6 +5889,7 @@ document.addEventListener('change', function(e){
   if (t.dataset.k === 'divCount') { S.event.divCount = toInt(t.value, 1, MAXDIV, 2); t.value = S.event.divCount; queueMeet(200); if (!syncRace()) render(); return; }
   if (t.dataset.k === 'dq') { S.event.dq = toInt(t.value, 1, 9, 3); queueRace(200); render(); }
   else if (t.dataset.k === 'pit') { S.event.pit = toInt(t.value, 0, 9, 0); queueRace(200); render(); }
+  else if (t.dataset.k === 'boardRows') { S.event.boardRows = toInt(t.value, 0, 200, 0); t.value = S.event.boardRows || ''; queueMeet(200); render(); }
 });
 
 document.addEventListener('keydown', function(e){
