@@ -190,11 +190,11 @@ main{padding:0 16px 56px}
   grid-template-rows:repeat(var(--board-rows,10),var(--board-row-h,60px));
   grid-template-columns:repeat(var(--board-cols,1),var(--board-col-w,300px));
   column-gap:16px;overflow-x:auto;overflow-y:hidden}
-.board-row{display:flex;align-items:center;gap:calc(var(--board-row-h,60px) * .16);padding-right:calc(var(--board-row-h,60px) * .16);border-bottom:1px solid var(--line);min-width:0;max-width:100%;overflow:hidden}
+.board-row{display:flex;align-items:center;gap:calc(var(--board-row-h,60px) * .16);padding-right:calc(var(--board-row-h,60px) * .16);border-bottom:1px solid var(--line);min-width:0;min-height:0;max-width:100%;max-height:100%;overflow:hidden}
 .board-n{flex:none;min-width:2.2em;text-align:right;font:800 calc(var(--board-row-h,60px) * .52)/1 var(--cond);letter-spacing:.02em;font-variant-numeric:tabular-nums}
 .board-row.dq .board-n{color:var(--red-ink)}
-.board-cards{flex:1 1 auto;display:flex;align-items:center;gap:calc(var(--board-row-h,60px) * .08);flex-wrap:wrap;min-height:1em;overflow:hidden}
-.board-chip{min-width:calc(var(--board-row-h,60px) * .55);height:calc(var(--board-row-h,60px) * .55);font-size:calc(var(--board-row-h,60px) * .3);border-radius:calc(var(--board-row-h,60px) * .1)}
+.board-cards{flex:1 1 auto;display:flex;align-items:center;gap:calc(var(--board-row-h,60px) * .08);flex-wrap:nowrap;min-height:1em;min-width:0;overflow:hidden}
+.chip-rc.board-chip{min-width:calc(var(--board-row-h,60px) * .78);height:calc(var(--board-row-h,60px) * .78);padding:0;font-size:calc(var(--board-row-h,60px) * .44);border-radius:calc(var(--board-row-h,60px) * .13)}
 .board-status{flex:none;display:flex;gap:4px}
 .apick[disabled]{opacity:.5;cursor:not-allowed}
 .apick.pzm{min-width:64px}
@@ -4376,7 +4376,9 @@ function boardShell(inner){ return '<div class="board" role="main">' + inner + '
 // the available height with that many rows. Runs after every board render, and again if the window resizes.
 // A column needs to be at least this many times taller than it is tall-per-row, or a big number (and its red cards) will
 // not fit beside it. Below this, fewer/wider columns are used instead, even in automatic sizing.
-var BOARD_MIN_COL_RATIO = 2.6;
+// Wide enough for a number plus the common case: the red cards for a DQ (3-4 is typical) and the DQ badge itself,
+// without needing to trim them. An athlete with unusually many cards may still have the last one or two clipped.
+var BOARD_MIN_COL_RATIO = 4.8;
 function layoutBoard(){
   if (!S.board) return;
   var list = document.querySelector('.board-list');
@@ -4386,10 +4388,15 @@ function layoutBoard(){
   var h = list.clientHeight, w = list.clientWidth;
   if (!h || !w) return;
   var manual = +S.event.boardRows || 0;
-  var cols = manual > 0 ? Math.max(1, Math.ceil(rows / manual)) : Math.max(1, Math.floor(w / 280));
-  var rpc = manual > 0 ? manual : Math.max(1, Math.ceil(rows / cols));
-  // shrink toward fewer, wider columns (bigger rows, so more rows per column) until each column is wide enough for its content
-  while (cols > 1 && (w / cols) < (h / rpc) * BOARD_MIN_COL_RATIO) { cols--; rpc = manual > 0 ? manual : Math.max(1, Math.ceil(rows / cols)); }
+  var cols, rpc;
+  if (manual > 0) {
+    rpc = manual; cols = Math.max(1, Math.ceil(rows / rpc));   // a fixed choice is used as given, even if a column ends up narrow
+  } else {
+    cols = Math.max(1, Math.floor(w / 280));
+    rpc = Math.max(1, Math.ceil(rows / cols));
+    // automatic sizing shrinks toward fewer, wider columns (bigger rows, so more rows per column) until each is wide enough for its content
+    while (cols > 1 && (w / cols) < (h / rpc) * BOARD_MIN_COL_RATIO) { cols--; rpc = Math.max(1, Math.ceil(rows / cols)); }
+  }
   list.style.setProperty('--board-rows', rpc);
   list.style.setProperty('--board-cols', cols);
   list.style.setProperty('--board-row-h', (h / rpc) + 'px');
