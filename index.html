@@ -194,7 +194,7 @@ main{padding:0 16px 56px}
 .board-n{flex:none;min-width:2.2em;text-align:right;font:800 calc(var(--board-row-h,60px) * .52)/1 var(--cond);letter-spacing:.02em;font-variant-numeric:tabular-nums}
 .board-row.dq .board-n{color:var(--red-ink)}
 .board-cards{flex:1 1 auto;display:flex;align-items:center;gap:calc(var(--board-row-h,60px) * .08);flex-wrap:nowrap;min-height:1em;min-width:0;overflow:hidden}
-.chip-rc.board-chip{min-width:calc(var(--board-row-h,60px) * .78);height:calc(var(--board-row-h,60px) * .78);padding:0;font-size:calc(var(--board-row-h,60px) * .44);border-radius:calc(var(--board-row-h,60px) * .13)}
+.chip-rc.board-chip{min-width:calc(var(--board-row-h,60px) * .6);height:calc(var(--board-row-h,60px) * .6);padding:0;font-size:calc(var(--board-row-h,60px) * .34);border-radius:calc(var(--board-row-h,60px) * .11)}
 .board-status{flex:none;display:flex;gap:4px}
 .apick[disabled]{opacity:.5;cursor:not-allowed}
 .apick.pzm{min-width:64px}
@@ -3315,6 +3315,7 @@ function qrSvg(text, px){
 function useHip(){ return S.event.useHip !== false; }
 function useBib(){ return S.event.useBib !== false; }
 // Which number the DQ Board lists athletes by: whichever the Recorder chose, or the only one in use.
+function boardRowsClamp(n){ return n > 0 && n < 6 ? 6 : n; }   // below 6 rows, a column is not wide enough for the numbers and their red cards
 function boardId(){ if (useHip() && useBib()) return S.event.dqId === 'hip' ? 'hip' : 'bib'; return useHip() ? 'hip' : 'bib'; }
 function boardIdLabel(){ return boardId() === 'hip' ? 'Hip #' : 'Bib #'; }
 
@@ -3375,7 +3376,7 @@ function normMeet(d){
   if (!e.useHip && !e.useBib) e.useHip = true;
   e.usePZ = d.usePZ === true;                 // the Penalty Zone tab is off unless the Recorder turns it on
   e.dqId = d.dqId === 'hip' || d.dqId === 'bib' ? d.dqId : '';   // which number the DQ Board shows, when both are in use
-  e.boardRows = toInt(d.boardRows, 0, 200, 0);                // a fixed rows-per-column for the DQ Board; 0 = size it automatically
+  e.boardRows = boardRowsClamp(toInt(d.boardRows, 0, 200, 0));  // a fixed rows-per-column for the DQ Board; 0 = size it automatically
   for (var kk = 0; kk < NJ; kk++) e.keys[kk] = Array.isArray(d.keys) ? str(d.keys[kk]).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12) : '';
   e.shareLink = str(d.shareLink);
   e.statuses = {};
@@ -4378,7 +4379,7 @@ function boardShell(inner){ return '<div class="board" role="main">' + inner + '
 // not fit beside it. Below this, fewer/wider columns are used instead, even in automatic sizing.
 // Wide enough for a number plus the common case: the red cards for a DQ (3-4 is typical) and the DQ badge itself,
 // without needing to trim them. An athlete with unusually many cards may still have the last one or two clipped.
-var BOARD_MIN_COL_RATIO = 4.8;
+var BOARD_MIN_COL_RATIO = 4.2;
 function layoutBoard(){
   if (!S.board) return;
   var list = document.querySelector('.board-list');
@@ -4770,8 +4771,8 @@ function dqBoardHTML(){
     '<p class="qr-note">To cast it to a Chromecast: open the link in Chrome, then use Chrome&rsquo;s Cast option to send that tab to the TV. Over HDMI, open the link and use the browser&rsquo;s full-screen mode.</p>' +
     (S.standalone ? '' : '<p class="qr-note">On the Claude-hosted copy, if the link does not go straight to the board, go to the sign-in or My meets screen instead, choose &ldquo;View a DQ Board&rdquo;, and type the meet code ' + (code ? '<b>' + esc(code) + '</b>' : 'shown above') + '.</p>') +
     (S.mode === 'local' ? '<p class="qr-note">Live sync is not available in this view, so the DQ Board would not see this meet.</p>' : '') +
-    '<div class="field board-rows-field"><label for="f-boardrows">Rows per column</label><input id="f-boardrows" type="number" inputmode="numeric" min="1" max="200" data-bind="ev" data-k="boardRows" data-f="ev:boardRows" value="' + (S.event.boardRows || '') + '" placeholder="Auto"' + dis + '>' +
-      '<small>Leave blank to size the board automatically, using the biggest text that fits everyone on screen. Set a number to use exactly that many rows in each column instead &mdash; useful to force bigger text for a small field. A very small number may need the board to scroll sideways.</small></div>' +
+    '<div class="field board-rows-field"><label for="f-boardrows">Rows per column</label><input id="f-boardrows" type="number" inputmode="numeric" min="6" max="200" data-bind="ev" data-k="boardRows" data-f="ev:boardRows" value="' + (S.event.boardRows || '') + '" placeholder="Auto"' + dis + '>' +
+      '<small>Leave blank to size the board automatically, using the biggest text that fits everyone on screen. Set a number (6 or more) to use exactly that many rows in each column instead &mdash; useful to force bigger text for a small field. Fewer than 6 does not leave enough room for the red cards, so it is raised to 6.</small></div>' +
     '</div></div></section>';
 }
 function setupHTML(){
@@ -5896,7 +5897,7 @@ document.addEventListener('change', function(e){
   if (t.dataset.k === 'divCount') { S.event.divCount = toInt(t.value, 1, MAXDIV, 2); t.value = S.event.divCount; queueMeet(200); if (!syncRace()) render(); return; }
   if (t.dataset.k === 'dq') { S.event.dq = toInt(t.value, 1, 9, 3); queueRace(200); render(); }
   else if (t.dataset.k === 'pit') { S.event.pit = toInt(t.value, 0, 9, 0); queueRace(200); render(); }
-  else if (t.dataset.k === 'boardRows') { S.event.boardRows = toInt(t.value, 0, 200, 0); t.value = S.event.boardRows || ''; queueMeet(200); render(); }
+  else if (t.dataset.k === 'boardRows') { S.event.boardRows = boardRowsClamp(toInt(t.value, 0, 200, 0)); t.value = S.event.boardRows || ''; queueMeet(200); render(); }
 });
 
 document.addEventListener('keydown', function(e){
