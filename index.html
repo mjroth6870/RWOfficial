@@ -192,7 +192,7 @@ main{padding:0 16px 56px}
 .board-list{flex:1 1 auto;min-height:0;display:grid;grid-auto-flow:column;
   grid-template-rows:repeat(var(--board-rows,10),var(--board-row-h,60px));
   grid-template-columns:repeat(var(--board-cols,1),var(--board-col-w,300px));
-  column-gap:16px;overflow-x:auto;overflow-y:hidden}
+  column-gap:16px;overflow-x:hidden;overflow-y:hidden}
 .board-row{display:flex;align-items:center;gap:calc(var(--board-row-h,60px) * .16);padding-right:calc(var(--board-row-h,60px) * .16);border-bottom:1px solid var(--line);min-width:0;min-height:0;max-width:100%;max-height:100%;overflow:hidden}
 .board-n{flex:none;min-width:2.2em;text-align:right;font:800 calc(var(--board-row-h,60px) * .52)/1 var(--cond);letter-spacing:.02em;font-variant-numeric:tabular-nums}
 .board-row.dq .board-n{color:var(--red-ink)}
@@ -274,6 +274,8 @@ main{padding:0 16px 56px}
 
 /* ---------- Matrix (Recorder + Red Cards) ---------- */
 .mx-wrap{overflow:auto;max-height:calc(100vh - 110px);max-height:var(--wrap-h,calc(100dvh - 110px));border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+.mx-fit{overflow-x:hidden;overflow-y:visible}
+.mx-scale{transform-origin:top left}
 table.mx{border-collapse:separate;border-spacing:0;table-layout:fixed;width:max-content;font-size:14px}
 .mx th,.mx td{padding:0 6px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--surface);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;font-weight:400}
 .mx tbody td{height:38px}
@@ -4142,6 +4144,25 @@ function fitGrid(){
   if (!w) return;
   var top = w.getBoundingClientRect().top + window.pageYOffset;
   w.style.setProperty('--wrap-h', Math.max(280, Math.floor(window.innerHeight - top - 12)) + 'px');
+  fitRedCards(w);
+}
+// The Red Cards table shrinks to whatever scale fits the whole screen, width and height together, so it never needs to
+// scroll at all, however many judges or athletes there are. (Recorder is unchanged: it still scrolls, with pinned columns;
+// a sticky header cannot work once its table is scaled like this, which is why the table is fit to the height too, so
+// nothing is ever left to scroll to.)
+function fitRedCards(wrap){
+  if (!wrap.classList.contains('mx-wrap-rc')) return;
+  var fit = wrap.querySelector('.mx-fit'), scaleEl = wrap.querySelector('.mx-scale');
+  if (!fit || !scaleEl) return;
+  scaleEl.style.transform = 'none'; fit.style.width = ''; fit.style.height = '';
+  var naturalW = scaleEl.scrollWidth, naturalH = scaleEl.scrollHeight;
+  var availW = wrap.clientWidth, availH = wrap.clientHeight;      // read directly: these already exclude the wrap's own border, unlike a fresh viewport calculation
+  if (!naturalW || !naturalH || !availW || !availH) return;
+  var scale = Math.min(1, availW / naturalW, availH / naturalH);
+  scaleEl.style.transform = scale < 1 ? 'scale(' + scale + ')' : 'none';
+  scaleEl.style.transformOrigin = 'top left';
+  fit.style.width = Math.ceil(naturalW * scale) + 'px';
+  fit.style.height = Math.ceil(naturalH * scale) + 'px';
 }
 function render(){
   if (S.board) { try { document.title = 'DQ Board' + (meet.name ? ' \u2013 ' + meet.name : ''); } catch(e){} setHTML($('#app'), boardHTML()); layoutBoard(); return; }
@@ -4645,7 +4666,10 @@ function matrixHTML(mode, rows, emptyMsg){
     });
     foot += '</tr></tfoot>';
   }
-  return '<div class="mx-wrap"><table class="mx' + (hip ? '' : ' nohip') + (bib ? '' : ' nobib') + '"><colgroup>' + cols + '</colgroup>' + head + '<tbody>' + body + '</tbody>' + foot + '</table></div>';
+  var table = '<table class="mx' + (hip ? '' : ' nohip') + (bib ? '' : ' nobib') + '"><colgroup>' + cols + '</colgroup>' + head + '<tbody>' + body + '</tbody>' + foot + '</table>';
+  return mode === 'rc'
+    ? '<div class="mx-wrap mx-wrap-rc"><div class="mx-fit"><div class="mx-scale">' + table + '</div></div></div>'
+    : '<div class="mx-wrap">' + table + '</div>';
 }
 
 /* ---------- Phone layout: athlete cards ---------- */
