@@ -1,0 +1,17 @@
+Copyright © 2020–2026 Michael J. Roth. All rights reserved.
+
+This repository and its contents, including the Race Walk Officiating application
+(index.html) and its accompanying files, are the property of Michael J. Roth.
+No part of this software or its source code may be copied, modified, distributed,
+sublicensed, or used, in whole or in part, without prior written permission from
+the copyright holder.
+
+The copyright end-year above should be updated every January 1.
+
+--------------------------------------------------------------------------------
+
+Third-party components
+
+index.html embeds a QR code generator by Kazuhiko Arase, used under the MIT
+License. Its own copyright notice and license terms are included in full within
+index.html and remain in effect regardless of the notice above.

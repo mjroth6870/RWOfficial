@@ -1,3 +1,6 @@
+<!-- Copyright © 2020–2026 Michael J. Roth. All rights reserved.
+     Update the end year above every January 1. The interface's own copyright line (in the footer) updates itself automatically.
+     Third-party code: the QR code generator embedded below keeps its own MIT copyright notice; see that notice for its terms. -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -196,6 +199,7 @@ main{padding:0 16px 56px}
 .board-cards{flex:1 1 auto;display:flex;align-items:center;gap:calc(var(--board-row-h,60px) * .08);flex-wrap:nowrap;min-height:1em;min-width:0;overflow:hidden}
 .chip-rc.board-chip{min-width:calc(var(--board-row-h,60px) * .6);height:calc(var(--board-row-h,60px) * .6);padding:0;font-size:calc(var(--board-row-h,60px) * .34);border-radius:calc(var(--board-row-h,60px) * .11)}
 .board-status{flex:none;display:flex;gap:4px}
+.app-foot{padding:10px 16px 16px;text-align:center;font-size:12px;color:var(--muted)}
 .apick[disabled]{opacity:.5;cursor:not-allowed}
 .apick.pzm{min-width:64px}
 .pzm-line{display:flex;align-items:center;gap:10px;margin:8px 0}
@@ -644,6 +648,7 @@ main{min-width:0}
   <nav class="tabs" id="nav" role="tablist" aria-label="Sections"></nav>
   <div class="racebar noprint" id="racebar"></div>
   <main id="view"></main>
+  <footer class="app-foot noprint">&copy; 2020&ndash;<span id="cyr">2026</span> Michael J. Roth. All rights reserved.</footer>
 </div>
 <div id="dialog-root"></div>
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
@@ -5948,6 +5953,7 @@ window.addEventListener('resize', fitGrid);
     var onMq = function(e){ S.narrow = e.matches; render(); };
     if (mq.addEventListener) mq.addEventListener('change', onMq); else if (mq.addListener) mq.addListener(onMq);
   } catch(e){}
+  try { var cy = new Date().getFullYear(), el = $('#cyr'); if (el) el.textContent = cy > 2020 ? cy : 2020; } catch(e){}
   render();
   connect();
 })();
