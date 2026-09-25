@@ -387,6 +387,7 @@ thead .cin{font-weight:600;height:100%;text-align:center;color:var(--ink)}
 .acct-email{color:var(--muted);font-size:14px;overflow-wrap:anywhere}
 .mlist{list-style:none;margin:0;padding:0;display:grid;gap:8px}
 .mcard{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:10px 12px;background:var(--surface);border:1px solid var(--line);border-radius:10px}
+.admin-row.susp{background:var(--red-soft);border-color:var(--red)}
 .mlist.arch .mcard{background:var(--surface-2)}
 .mc-main{display:grid;min-width:0}
 .mc-name{font-size:17px;overflow-wrap:anywhere}
@@ -3192,6 +3193,7 @@ var S = {
   adminSel: null,                 // the uid of the account currently open in the admin screen, if any
   adminSelMeets: null,             // that account's meets, once loaded
   adminAdmins: null,               // (Firebase) every other admin's uid, for the admin management list
+  suspended: false,                // this account has been suspended by an admin: read-only everywhere, even its own meets
   qrOpen: false,                 // QR panel open on the judge tab
   official: 0,                   // judge number this device is officiating as (0 = normal app)
   offToken: '',
@@ -3216,7 +3218,7 @@ var db = null, dl = null, U = null;
 
 // ro(): may this viewer change the meet itself (setup, athletes, officials, statuses)? Only its owner, and not while archived.
 // roEnt(): may this viewer record judge entries? Anyone with the meet open, unless it is archived.
-function ro(){ return !S.ready || !S.canWrite || S.archived || (!!S.acct && S.screen === 'meet' && !S.acct.mine); }
+function ro(){ return !S.ready || !S.canWrite || S.archived || S.suspended || (!!S.acct && S.screen === 'meet' && !S.acct.mine); }
 function roEnt(){ return !S.ready || !S.canWrite || S.archived; }
 function isSupervisory(){ return S.event.supervisory === true; }
 function isActive(n){
@@ -3688,7 +3690,8 @@ async function signOutNow(){
   ME = {id:null, name:'', email:null, avatarUrl:'', anon:false}; S.acct = {uid:null}; S.acctDoc = false; S.meets = []; S.linkSent = '';
   if (mySub) { try { mySub(); } catch(e){} mySub = null; }
   if (adminSub) { try { adminSub(); } catch(e){} adminSub = null; }
-  S.isAdmin = false; S.adminAccounts = null; S.adminSel = null; S.adminSelMeets = null; S.adminAdmins = null;
+  if (suspSub) { try { suspSub(); } catch(e){} suspSub = null; }
+  S.isAdmin = false; S.adminAccounts = null; S.adminSel = null; S.adminSelMeets = null; S.adminAdmins = null; S.suspended = false;
   S.screen = 'signin'; try { if (location.hash) location.hash = ''; } catch(e){}
   render();
 }
@@ -3705,7 +3708,7 @@ async function ensureGuest(){
 async function loadAccount(){
   try { var sn = await db.doc('data/users/' + S.acct.uid + '/account').get(); S.acctDoc = !!(sn && sn.exists); applyCustomName(sn && sn.exists ? sn.data() : null); } catch(e){ S.acctDoc = false; }
   S.screen = S.acctDoc ? 'home' : 'signup';
-  if (S.acctDoc) { subscribeMyMeets(); touchAccountDirectory(); subscribeIsAdmin(); }
+  if (S.acctDoc) { subscribeMyMeets(); touchAccountDirectory(); subscribeIsAdmin(); subscribeSuspended(); }
   render();
   checkLegacy();
 }
@@ -3748,12 +3751,18 @@ async function touchAccountDirectory(){
   try {
     var prev = null; try { var sn = await db.doc('accounts/' + S.acct.uid).get(); if (sn && sn.exists) prev = sn.data(); } catch(e){}
     var now = new Date().toISOString();
-    await db.doc('accounts/' + S.acct.uid).set({
+    await db.doc('accounts/' + S.acct.uid).set(Object.assign({}, prev, {
       name: (ME && ME.name) || '', email: (ME && ME.email) || null, avatarUrl: (ME && ME.avatarUrl) || '',
       createdAt: (prev && prev.createdAt) || now, lastSeen: now
-    });
+    }));
     if (S.standalone && !prev) bootstrapFirstAdmin();      // the very first person to appear in the directory can become the first admin
   } catch(e){}
+}
+// Whether an admin has suspended this account: kept live, since a suspension should take effect without needing to reload.
+var suspSub = null;
+function subscribeSuspended(){
+  if (suspSub || !S.acct || !S.acct.uid) return;
+  try { suspSub = db.doc('accounts/' + S.acct.uid).onSnapshot(function(sn){ S.suspended = !!(sn && sn.exists && sn.data() && sn.data().suspended); render(); }, function(){}); } catch(e){}
 }
 // Whether this account may open the admin screen. Firebase: an admins/<uid> record exists. Claude-hosted: the platform's
 // own "can edit this artifact" permission (the artifact owner, and anyone they have added as an editor) is used instead
@@ -3797,7 +3806,7 @@ async function signUp(){
   try { await db.doc('data/users/' + S.acct.uid + '/account').set({created:new Date().toISOString(), v:1}); }
   catch(e){ toast('Your account could not be created. This view may be read-only.'); return; }
   S.acctDoc = true; S.screen = 'home'; subscribeMyMeets(); render();
-  touchAccountDirectory(); subscribeIsAdmin();
+  touchAccountDirectory(); subscribeIsAdmin(); subscribeSuspended();
 }
 function teardownMeet(){
   flushAll(); unsubRace();
@@ -3981,7 +3990,7 @@ function meetCardHTML(m, archived){
   var when = m.date ? esc(fmtDate(m.date)) : 'No date';
   return '<li class="mcard"><div class="mc-main"><b class="mc-name">' + (esc(m.name) || 'Untitled meet') + '</b><span class="mc-sub">' + when + (archived && m.archivedAt ? ' &middot; archived ' + esc(fmtDate(m.archivedAt.slice(0, 10))) : '') + '</span></div>' +
     '<div class="mc-act"><button class="btn' + (archived ? '' : ' primary') + '" data-act="open-meet" data-id="' + esc(m.id) + '">' + (archived ? 'View' : 'Open') + '</button>' +
-    '<button class="btn" data-act="' + (archived ? 'restore-meet' : 'archive-meet') + '" data-id="' + esc(m.id) + '"' + (S.canWrite ? '' : ' disabled') + '>' + (archived ? 'Restore' : 'Archive') + '</button></div></li>';
+    '<button class="btn" data-act="' + (archived ? 'restore-meet' : 'archive-meet') + '" data-id="' + esc(m.id) + '"' + (S.canWrite && !S.suspended ? '' : ' disabled') + '>' + (archived ? 'Restore' : 'Archive') + '</button></div></li>';
 }
 /* ---------- Admin screen: every account, and (Firebase) who else is an admin ---------- */
 var adminAccSub = null, adminMeetsSub = null, adminAdminsSub = null;
@@ -3991,7 +4000,7 @@ function goAdmin(){
   if (!adminAccSub) {
     try {
       adminAccSub = db.collection('accounts').onSnapshot(function(sn){
-        S.adminAccounts = sn.docs.map(function(d){ var x = d.data() || {}; return {uid:d.id, name:str(x.name), email:x.email || '', createdAt:str(x.createdAt), lastSeen:str(x.lastSeen)}; })
+        S.adminAccounts = sn.docs.map(function(d){ var x = d.data() || {}; return {uid:d.id, name:str(x.name), email:x.email || '', createdAt:str(x.createdAt), lastSeen:str(x.lastSeen), suspended:x.suspended === true}; })
           .sort(function(a, b){ return (b.lastSeen || '').localeCompare(a.lastSeen || ''); });
         if (S.screen === 'admin') render();
       }, function(){ S.adminAccounts = []; if (S.screen === 'admin') render(); });
@@ -4016,7 +4025,7 @@ function adminOpenAccount(uid){
   if (adminMeetsSub) { try { adminMeetsSub(); } catch(e){} adminMeetsSub = null; }
   try {
     adminMeetsSub = db.collection('cfg/' + uid + '/meets').onSnapshot(function(sn){
-      S.adminSelMeets = sn.docs.map(function(d){ var x = d.data() || {}; return {id:d.id, name:str(x.name), date:str(x.date), created:str(x.created), archived:x.archived === true}; })
+      S.adminSelMeets = sn.docs.map(function(d){ var x = d.data() || {}; return {id:d.id, name:str(x.name), date:str(x.date), created:str(x.created), archived:x.archived === true, archivedAt:str(x.archivedAt), code:str(x.code)}; })
         .sort(function(a, b){ return (b.date || b.created || '').localeCompare(a.date || a.created || ''); });
       if (S.adminSel === uid) render();
     }, function(){ S.adminSelMeets = []; if (S.adminSel === uid) render(); });
@@ -4030,29 +4039,65 @@ async function adminSetAdmin(uid, on){
     else await db.doc('admins/' + uid).delete();
   } catch(e){ toast('That change could not be saved.'); }
 }
+async function adminSetSuspended(uid, on){
+  if (!S.isAdmin) return;
+  try {
+    var sn = await db.doc('accounts/' + uid).get();
+    var d = (sn && sn.exists && sn.data()) || {};
+    d.suspended = !!on;
+    await db.doc('accounts/' + uid).set(d);
+  } catch(e){ toast('That change could not be saved.'); return; }
+  toast(on ? 'Account suspended.' : 'Suspension lifted.');
+}
+// Archiving or restoring another account's meet, or resetting its official codes, from the admin screen. These write
+// straight to that owner's own meet documents; they do not open the meet the way "View meets" -> a meet card would.
+async function adminArchiveMeet(uid, meetId, v){
+  var m = (S.adminSelMeets || []).filter(function(x){ return x.id === meetId; })[0];
+  if (!m) return;
+  try { await db.doc('cfg/' + uid + '/meets/' + meetId).set(metaOf(m, {archived:v, archivedAt:v ? new Date().toISOString() : ''})); }
+  catch(e){ toast('That change could not be saved.'); }
+}
+async function adminResetCodes(uid, meetId){
+  try {
+    var sn = await db.doc('cfg/' + uid + '/meets/' + meetId + '/event/main').get();
+    if (!(sn && sn.exists)) { toast('That meet could not be found.'); return; }
+    var d = sn.data(); d.keys = d.keys || [];
+    for (var i = 0; i < NJ; i++) d.keys[i] = newToken();
+    await db.doc('cfg/' + uid + '/meets/' + meetId + '/event/main').set(d);
+    toast('New codes created.');
+  } catch(e){ toast('That change could not be saved.'); }
+}
 function adminAccountRowHTML(a){
   var isMe = a.uid === S.acct.uid, isAdm = S.standalone && S.adminAdmins && S.adminAdmins.indexOf(a.uid) >= 0;
-  return '<li class="mcard admin-row"><div class="mc-main"><b class="mc-name">' + (esc(a.name) || 'Unnamed account') + (isAdm ? ' <span class="jchip ac" title="Admin">A</span>' : '') + '</b>' +
+  return '<li class="mcard admin-row' + (a.suspended ? ' susp' : '') + '"><div class="mc-main"><b class="mc-name">' + (esc(a.name) || 'Unnamed account') + (isAdm ? ' <span class="jchip ac" title="Admin">A</span>' : '') + (a.suspended ? ' <span class="stx dq" title="Suspended">Suspended</span>' : '') + '</b>' +
     '<span class="mc-sub">' + (a.email ? esc(a.email) : 'No email shared') + (a.lastSeen ? ' &middot; last seen ' + esc(fmtDate(a.lastSeen.slice(0, 10))) : '') + '</span></div>' +
     '<div class="mc-act"><button class="btn" data-act="admin-open" data-id="' + esc(a.uid) + '">View meets</button>' +
-    (S.standalone && !isMe ? '<button class="btn" data-act="admin-toggle-admin" data-id="' + esc(a.uid) + '" data-v="' + (isAdm ? '0' : '1') + '"' + (S.canWrite ? '' : ' disabled') + '>' + (isAdm ? 'Remove admin' : 'Make admin') + '</button>' : '') + '</div></li>';
+    (S.standalone && !isMe ? '<button class="btn" data-act="admin-toggle-admin" data-id="' + esc(a.uid) + '" data-v="' + (isAdm ? '0' : '1') + '"' + (S.canWrite ? '' : ' disabled') + '>' + (isAdm ? 'Remove admin' : 'Make admin') + '</button>' : '') +
+    (!isMe ? '<button class="btn" data-act="admin-toggle-suspend" data-id="' + esc(a.uid) + '" data-v="' + (a.suspended ? '0' : '1') + '"' + (S.canWrite ? '' : ' disabled') + '>' + (a.suspended ? 'Lift suspension' : 'Suspend') + '</button>' : '') + '</div></li>';
 }
-// A plain, non-interactive row: the admin screen is read-only for now, so this never offers Open, Archive or Restore
-// the way the person's own home screen does -- those act on the signed-in person's own meets, not whoever is being viewed here.
-function adminMeetRowHTML(m){
+// A meet row with the same actions its own owner would have (archive/restore, reset codes), usable by an admin on
+// any account's meets. There is no Open here: the admin screen looks at meets, it does not go in and edit their setup.
+function adminMeetRowHTML(m, uid){
   var when = m.date ? esc(fmtDate(m.date)) : 'No date';
-  return '<li class="mcard"><div class="mc-main"><b class="mc-name">' + (esc(m.name) || 'Untitled meet') + '</b><span class="mc-sub">' + when + (m.archived ? ' &middot; archived' : '') + '</span></div></li>';
+  return '<li class="mcard"><div class="mc-main"><b class="mc-name">' + (esc(m.name) || 'Untitled meet') + '</b><span class="mc-sub">' + when + (m.archived ? ' &middot; archived' : '') + '</span></div>' +
+    '<div class="mc-act">' +
+    (m.archived
+      ? '<button class="btn" data-act="admin-restore-meet" data-uid="' + esc(uid) + '" data-id="' + esc(m.id) + '"' + (S.canWrite ? '' : ' disabled') + '>Restore</button>'
+      : '<button class="btn" data-act="admin-archive-meet" data-uid="' + esc(uid) + '" data-id="' + esc(m.id) + '" data-name="' + esc(m.name || 'this meet') + '"' + (S.canWrite ? '' : ' disabled') + '>Archive</button>' +
+        '<button class="btn" data-act="admin-reset-codes" data-uid="' + esc(uid) + '" data-id="' + esc(m.id) + '"' + (S.canWrite ? '' : ' disabled') + '>Reset codes</button>') +
+    '</div></li>';
 }
 function adminDetailHTML(){
   var a = (S.adminAccounts || []).filter(function(x){ return x.uid === S.adminSel; })[0];
-  var meets = S.adminSelMeets;
+  var meets = S.adminSelMeets, uid = S.adminSel;
   var act = meets ? meets.filter(function(m){ return !m.archived; }) : [], arc = meets ? meets.filter(function(m){ return m.archived; }) : [];
+  var row = function(m){ return adminMeetRowHTML(m, uid); };
   return '<section class="band"><button type="button" class="btn sm" data-act="admin-back">&lsaquo; All accounts</button>' +
     '<h2 class="sec-h" style="margin-top:10px">' + (a ? esc(a.name) || 'Unnamed account' : 'Account') + '</h2>' +
     (a ? '<p class="off-note">' + (a.email ? esc(a.email) : 'No email shared') + ' &middot; created ' + (a.createdAt ? esc(fmtDate(a.createdAt.slice(0, 10))) : 'unknown') + '</p>' : '') +
     (meets === null ? '<p class="off-note">Loading their meets&hellip;</p>' :
-      (meets.length ? '<h3 class="pz-h">Active <span class="count">' + act.length + '</span></h3>' + (act.length ? '<ul class="mlist">' + act.map(adminMeetRowHTML).join('') + '</ul>' : '<p class="off-note">None.</p>') +
-        '<h3 class="pz-h">Archived <span class="count">' + arc.length + '</span></h3>' + (arc.length ? '<ul class="mlist arch">' + arc.map(adminMeetRowHTML).join('') + '</ul>' : '<p class="off-note">None.</p>')
+      (meets.length ? '<h3 class="pz-h">Active <span class="count">' + act.length + '</span></h3>' + (act.length ? '<ul class="mlist">' + act.map(row).join('') + '</ul>' : '<p class="off-note">None.</p>') +
+        '<h3 class="pz-h">Archived <span class="count">' + arc.length + '</span></h3>' + (arc.length ? '<ul class="mlist arch">' + arc.map(row).join('') + '</ul>' : '<p class="off-note">None.</p>')
       : '<p class="off-note">This account has no meets.</p>')) + '</section>';
 }
 function adminHTML(){
@@ -4065,7 +4110,7 @@ function adminHTML(){
     '<div class="mc-act">' + (dl ? '<button class="btn" data-act="admin-export">Export CSV</button>' : '') + '</div></div>' +
     '<input class="qr-link" id="admin-search" placeholder="Search by name or email" value="' + esc(S.adminSearch) + '" data-f="admin-search">' +
     (rows === null ? '<p class="off-note">Loading accounts&hellip;</p>' : (rows.length ? '<ul class="mlist">' + rows.map(adminAccountRowHTML).join('') + '</ul>' : '<p class="off-note">No accounts match.</p>')) +
-    '<p class="off-note">Read-only for now: archiving, resetting an official&rsquo;s codes, and suspending an account from here may come later.</p></section></div>';
+    '<p class="off-note">Archiving, restoring, resetting an official&rsquo;s codes and suspending an account act right away, without asking that account&rsquo;s owner first. Editing someone else&rsquo;s meet setup directly, and deleting a meet or a login outright, are not available here.</p></section></div>';
 }
 async function adminExportCsv(){
   if (!dl || !S.adminAccounts) return;
@@ -4077,8 +4122,9 @@ async function adminExportCsv(){
 function homeHTML(){
   var act = S.meets.filter(function(m){ return !m.archived; }), arc = S.meets.filter(function(m){ return m.archived; });
   return '<div class="home">' +
-    '<section class="band"><div class="home-h"><h2 class="sec-h">Your meets</h2><div class="mc-act"><button class="btn" data-act="import-pick"' + (S.canWrite ? '' : ' disabled') + '>Import from file</button><button class="btn primary" data-act="new-meet"' + (S.canWrite ? '' : ' disabled') + '>New meet</button></div></div><input type="file" id="imp-file" accept=".json,application/json" hidden>' +
+    '<section class="band"><div class="home-h"><h2 class="sec-h">Your meets</h2><div class="mc-act"><button class="btn" data-act="import-pick"' + (S.canWrite && !S.suspended ? '' : ' disabled') + '>Import from file</button><button class="btn primary" data-act="new-meet"' + (S.canWrite && !S.suspended ? '' : ' disabled') + '>New meet</button></div></div><input type="file" id="imp-file" accept=".json,application/json" hidden>' +
     acctCardHTML() +
+    (S.suspended ? '<p class="warn">An admin has suspended this account. You can still see your meets, but cannot change them, start a new one, or give out new codes, until it is lifted.</p>' : '') +
     (act.length ? '<ul class="mlist">' + act.map(function(m){ return meetCardHTML(m, false); }).join('') + '</ul>' : '<p class="off-note">You have no active meets. Choose New meet to set one up.</p>') + '</section>' +
     (S.legacyFound ? '<section class="band"><h2 class="sec-h">A meet from before accounts</h2><p class="off-note">' + (S.legacyName ? '&ldquo;' + esc(S.legacyName) + '&rdquo; was set up before accounts existed.' : 'A meet was set up before accounts existed.') + ' Import it into your account to keep working on it. Its old QR codes stop working, and the new ones carry over.</p><div class="toolbar"><button class="btn" data-act="import-legacy"' + (S.canWrite ? '' : ' disabled') + '>Import this meet</button></div></section>' : '') +
     '<section class="band"><h2 class="sec-h">Archived meets <span class="count">' + arc.length + '</span></h2>' +
@@ -4724,7 +4770,7 @@ function howtoHTML(){
       '<li>Officials do not need an account. They scan the QR code on their judge tab, or type its code.</li>' +
       '<li>Export meet data on the Setup tab saves a meet as a backup file. Import from file on My meets restores it, in this copy of the app or another.</li>' +
       '<li>The DQ Board, on the Setup tab, is a public scoreboard for a TV or projector: every athlete&rsquo;s hip or bib # and red cards, in number order, with no sign-in needed. Cast the link to a Chromecast from Chrome, or open it full-screen over HDMI. It sizes its own text to fill the screen automatically; set Rows per column there to fix it at a specific number of rows instead, for example to force bigger text on a small field. On the Claude-hosted copy, if the link does not go straight to the board, choose &ldquo;View a DQ Board&rdquo; on the sign-in or My meets screen and type the meet code shown there instead. An athlete&rsquo;s number turns red once they are disqualified &mdash; either by reaching the red card count for a DQ, or by a last 100m red card from a supervisory Chief Judge, even with only that one card.</li>' +
-      '<li>An admin can open Admin from My meets to browse every account and see the meets they own, read-only. On the Firebase-hosted copy the first account ever created becomes an admin automatically, and any admin can make or remove others from that screen. On this Claude-hosted copy, admin access instead follows who can edit this artifact: the owner, and anyone they add as an editor in Claude&rsquo;s own sharing settings &mdash; there is no Make admin button here.</li>' +
+      '<li>An admin can open Admin from My meets to browse every account and see the meets they own. From there, an admin can archive or restore any meet, reset an official&rsquo;s codes on it, and suspend or lift the suspension on an account &mdash; all without needing that account&rsquo;s owner. Editing someone else&rsquo;s meet setup directly, and deleting a meet or a login outright, are not offered here. On the Firebase-hosted copy the first account ever created becomes an admin automatically, and any admin can make or remove others from that screen. On this Claude-hosted copy, admin access instead follows who can edit this artifact: the owner, and anyone they add as an editor in Claude&rsquo;s own sharing settings &mdash; there is no Make admin button here, though suspending an account and acting on a meet still work the same way.</li>' +
       '<li>Edit name, next to your name on My meets, lets you choose what is shown there instead of whatever your sign-in provided &mdash; useful if it shows an email address or an unfamiliar name. It changes everywhere your name appears, including the admin screen. Clear the box to go back to your sign-in&rsquo;s own name.</li>' +
     '</ul></section>' +
 
@@ -5990,6 +6036,15 @@ document.addEventListener('click', function(e){
     case 'admin-back': adminBack(); break;
     case 'admin-open': adminOpenAccount(b.dataset.id); break;
     case 'admin-toggle-admin': adminSetAdmin(b.dataset.id, b.dataset.v === '1'); break;
+    case 'admin-toggle-suspend': {
+      var susOn = b.dataset.v === '1';
+      if (susOn) confirmDlg('Suspend this account?', 'They keep read access to their own meets, but cannot change them, start a new one, or give out new codes, until you lift the suspension.', 'Suspend', function(){ adminSetSuspended(b.dataset.id, true); });
+      else adminSetSuspended(b.dataset.id, false);
+      break;
+    }
+    case 'admin-archive-meet': confirmDlg('Archive ' + esc(b.dataset.name) + '?', 'It becomes read-only for everyone, including officials. It can be restored at any time.', 'Archive meet', function(){ adminArchiveMeet(b.dataset.uid, b.dataset.id, true); }); break;
+    case 'admin-restore-meet': adminArchiveMeet(b.dataset.uid, b.dataset.id, false); break;
+    case 'admin-reset-codes': confirmDlg('Create new codes?', 'This replaces the code for every official on this meet. Every earlier QR code and typed code stops working, including on devices using one right now.', 'Create new codes', function(){ adminResetCodes(b.dataset.uid, b.dataset.id); }); break;
     case 'admin-export': adminExportCsv(); break;
     case 'signup': signUp(); break;
     case 'send-link': {
@@ -6000,7 +6055,7 @@ document.addEventListener('click', function(e){
     }
     case 'link-again': S.linkSent = ''; render(); break;
     case 'sign-out': signOutNow(); break;
-    case 'new-meet': if (S.canWrite) openNewMeetDialog(); break;
+    case 'new-meet': if (S.canWrite && !S.suspended) openNewMeetDialog(); break;
     case 'open-meet': if (S.acct) { LS.set(KEY + 'official', ''); openMeet(S.acct.uid, b.dataset.id); } break;
     case 'home': if (S.acct) goHome(); break;
     case 'archive-meet': case 'restore-meet': {

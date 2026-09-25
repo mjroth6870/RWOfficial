@@ -37,18 +37,26 @@ Any static host works instead (Cloudflare Pages, Netlify): publish `index.html` 
 
 ## The admin screen (Firebase copy)
 Any account can see whether it has admin access from **My meets**: an admin sees an **Admin** section there, opening a
-screen that lists every account and, read-only, the meets each one owns. The **first account ever created** on a fresh
-deployment becomes an admin automatically, with no console step needed. From then on, an existing admin can make or
-remove another account's admin access from that same screen. Archiving, resetting an official's codes, and suspending
-an account from here may come later; today it only looks.
+screen that lists every account and the meets each one owns. The **first account ever created** on a fresh deployment
+becomes an admin automatically, with no console step needed. From then on, an existing admin can make or remove
+another account's admin access from that same screen.
+
+From an account's own meet list, an admin can also **archive or restore** any of that account's meets and **reset an
+official's codes** on one, without needing to ask its owner first -- each with a confirmation first, matching the
+wording the owner themselves would see. From the accounts list, an admin can **suspend** an account: it can still see
+its own meets, but cannot change them, start a new one, or hand out a new code, until an admin **lifts** the
+suspension. An official already recording entries on a suspended organizer's meet keeps working -- suspension only
+stops the organizer's own management of it. Editing someone else's meet setup directly, and deleting a meet or a login
+outright, are not offered here.
 
 If you deployed before this feature existed, re-paste `firestore.rules` into Firestore > Rules and publish again: the
-new rules add the `accounts` and `admins` collections this screen depends on, alongside everything that was already
-there.
+rules add the `accounts` and `admins` collections this screen depends on (and, more recently, let an admin write to
+another account's meets and suspend an account), alongside everything that was already there.
 
 On the Claude-hosted copy, admin access is not a separate thing this app manages: it follows Claude's own permission
 for who can edit that artifact (the owner, and anyone they add as an editor there). There is no Make admin button on
-that copy, and no `admins` collection is used there at all.
+that copy, and no `admins` collection is used there at all -- but archiving, resetting codes and suspending an account
+all work the same way, since they only need that same "can edit" permission the platform already tracks.
 
 ## Test the rules before a real meet
 In the Firebase console, Firestore > Rules > **Rules Playground**. Expected results:
@@ -71,11 +79,19 @@ In the Firebase console, Firestore > Rules > **Rules Playground**. Expected resu
 | Organizer `X` (an admin), get | `/cfg/Y/meets/m1` | Allowed |
 | Organizer `X`, get | `/admins/X` | Allowed (this is how the app checks its own admin status) |
 | Organizer `X` (not an admin), set | `/admins/Y` | Denied |
+| Organizer `X` (an admin), update | `/cfg/Y/meets/m1` | Allowed (archive/restore/reset codes on another account's meet) |
+| Organizer `X` (not an admin), update | `/cfg/Y/meets/m1` | Denied |
+| Organizer `X` (suspended), update | `/cfg/X/meets/m1` | Denied (their own meet, while suspended) |
+| Organizer `X` (suspended), get | `/cfg/X/meets/m1/event/main` | Allowed (suspension never blocks reading) |
+| Anonymous guest, update | `/ent/m1/judges/j1` | Allowed, even if the meet's owner is suspended |
+| Organizer `X` (an admin), update | `/accounts/Y` | Allowed (suspend or lift suspension) |
+| Organizer `X` (not an admin), update | `/accounts/Y` | Denied |
 
 Two more worth running: **list** `ent` as a guest should be **Denied**, and **create** `cfg/orgX/meets/m1/races/d1h1` as a guest should be **Denied**.
 
 "An admin" above means a document already exists at `/admins/<their uid>`. To test that case in the Playground, first
-create one by hand under Firestore > Data: a document at `admins/<some uid>` with any field (for example `by: "test"`).
+create one by hand under Firestore > Data: a document at `admins/<some uid>` with any field (for example `by: "test"`). "Suspended" means a document
+exists at `/accounts/<their uid>` with `suspended: true`; create or edit one the same way to test that case.
 
 These rules were checked in advance with Firebase's own rules parser (syntax) and with an independent evaluator that ran all
 of the above plus every read and write the app makes. That is not the same as Firebase's own emulator, so treat the
