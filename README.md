@@ -43,11 +43,13 @@ another account's admin access from that same screen.
 
 From an account's own meet list, an admin can also **archive or restore** any of that account's meets and **reset an
 official's codes** on one, without needing to ask its owner first -- each with a confirmation first, matching the
-wording the owner themselves would see. From the accounts list, an admin can **suspend** an account: it can still see
-its own meets, but cannot change them, start a new one, or hand out a new code, until an admin **lifts** the
-suspension. An official already recording entries on a suspended organizer's meet keeps working -- suspension only
-stops the organizer's own management of it. Editing someone else's meet setup directly, and deleting a meet or a login
-outright, are not offered here.
+wording the owner themselves would see. **Open** shows a meet read-only, with the same **Export CSV**, **Export PDF**
+and **Export meet data** tools its owner has, so an admin can pull a copy of anyone's results without changing
+anything -- a banner marks the view, and the back button returns to Admin instead of My meets. From the accounts
+list, an admin can **suspend** an account: it can still see its own meets, but cannot change them, start a new one, or
+hand out a new code, until an admin **lifts** the suspension. An official already recording entries on a suspended
+organizer's meet keeps working -- suspension only stops the organizer's own management of it. Editing someone else's
+meet setup directly, and deleting a meet or a login outright, are not offered here.
 
 If you deployed before this feature existed, re-paste `firestore.rules` into Firestore > Rules and publish again: the
 rules add the `accounts` and `admins` collections this screen depends on (and, more recently, let an admin write to

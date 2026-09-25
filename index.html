@@ -3194,6 +3194,7 @@ var S = {
   adminSelMeets: null,             // that account's meets, once loaded
   adminAdmins: null,               // (Firebase) every other admin's uid, for the admin management list
   suspended: false,                // this account has been suspended by an admin: read-only everywhere, even its own meets
+  fromAdmin: false,                // this meet was opened from the admin screen; the back button should return there, not to My meets
   qrOpen: false,                 // QR panel open on the judge tab
   official: 0,                   // judge number this device is officiating as (0 = normal app)
   offToken: '',
@@ -3691,7 +3692,7 @@ async function signOutNow(){
   if (mySub) { try { mySub(); } catch(e){} mySub = null; }
   if (adminSub) { try { adminSub(); } catch(e){} adminSub = null; }
   if (suspSub) { try { suspSub(); } catch(e){} suspSub = null; }
-  S.isAdmin = false; S.adminAccounts = null; S.adminSel = null; S.adminSelMeets = null; S.adminAdmins = null; S.suspended = false;
+  S.isAdmin = false; S.adminAccounts = null; S.adminSel = null; S.adminSelMeets = null; S.adminAdmins = null; S.suspended = false; S.fromAdmin = false;
   S.screen = 'signin'; try { if (location.hash) location.hash = ''; } catch(e){}
   render();
 }
@@ -3842,6 +3843,12 @@ function goHome(){
   teardownMeet();
   S.acct.owner = null; S.acct.meetId = null; S.acct.mine = false; S.acct.legacy = false;
   LS.set(KEY + 'official', '');
+  if (S.fromAdmin) {
+    S.fromAdmin = false; S.screen = 'admin'; S.ready = true;
+    try { if (location.hash) location.hash = ''; } catch(e){}
+    render();
+    return;
+  }
   S.screen = ME && ME.anon ? 'signin' : (S.acctDoc ? 'home' : 'signup'); S.ready = true;
   try { if (location.hash) location.hash = ''; } catch(e){}
   render();
@@ -4075,12 +4082,12 @@ function adminAccountRowHTML(a){
     (S.standalone && !isMe ? '<button class="btn" data-act="admin-toggle-admin" data-id="' + esc(a.uid) + '" data-v="' + (isAdm ? '0' : '1') + '"' + (S.canWrite ? '' : ' disabled') + '>' + (isAdm ? 'Remove admin' : 'Make admin') + '</button>' : '') +
     (!isMe ? '<button class="btn" data-act="admin-toggle-suspend" data-id="' + esc(a.uid) + '" data-v="' + (a.suspended ? '0' : '1') + '"' + (S.canWrite ? '' : ' disabled') + '>' + (a.suspended ? 'Lift suspension' : 'Suspend') + '</button>' : '') + '</div></li>';
 }
-// A meet row with the same actions its own owner would have (archive/restore, reset codes), usable by an admin on
-// any account's meets. There is no Open here: the admin screen looks at meets, it does not go in and edit their setup.
+// A meet row with the same actions its own owner would have (archive/restore, reset codes, plus a read-only Open to
+// use the same Export CSV/PDF/meet data tools the owner has), usable by an admin on any account's meets.
 function adminMeetRowHTML(m, uid){
   var when = m.date ? esc(fmtDate(m.date)) : 'No date';
   return '<li class="mcard"><div class="mc-main"><b class="mc-name">' + (esc(m.name) || 'Untitled meet') + '</b><span class="mc-sub">' + when + (m.archived ? ' &middot; archived' : '') + '</span></div>' +
-    '<div class="mc-act">' +
+    '<div class="mc-act"><button class="btn" data-act="admin-open-meet" data-uid="' + esc(uid) + '" data-id="' + esc(m.id) + '" title="Open read-only, to use its Export CSV, PDF or meet data">Open</button>' +
     (m.archived
       ? '<button class="btn" data-act="admin-restore-meet" data-uid="' + esc(uid) + '" data-id="' + esc(m.id) + '"' + (S.canWrite ? '' : ' disabled') + '>Restore</button>'
       : '<button class="btn" data-act="admin-archive-meet" data-uid="' + esc(uid) + '" data-id="' + esc(m.id) + '" data-name="' + esc(m.name || 'this meet') + '"' + (S.canWrite ? '' : ' disabled') + '>Archive</button>' +
@@ -4161,6 +4168,7 @@ function openNewMeetDialog(){
   });
 }
 function meetManageHTML(){
+  if (S.fromAdmin) return dl ? '<section class="band noprint"><h2 class="sec-h">Export meet data</h2><p class="off-note">Saves everything for this meet as a JSON file, the same backup its owner could make. Archiving or restoring this meet, or resetting its codes, is done from the admin screen itself, not here.</p><div class="toolbar"><button class="btn" data-act="export-meet">Export meet data</button></div></section>' : '';
   if (!(S.acct && S.acct.mine)) return '';
   return '<section class="band noprint"><h2 class="sec-h">Meet archive and backup</h2>' + (S.archived
     ? '<p class="off-note">This meet is archived and read-only. Restore it to make changes or let judges record.</p>'
@@ -4560,7 +4568,7 @@ function renderNav(){
   }
   var nRC = S.event.athletes.filter(function(a){ return redCount(a.id) > 0; }).length;
   var base = [['howto','How To'], ['setup','Setup'], ['recorder','Recorder'], ['redcards','Red Cards'], ['penalty','Penalty Zone']];
-  var homeBtn = S.acct && S.screen === 'meet' ? '<button type="button" class="tab homebtn" data-act="home" title="Back to your meets">&lsaquo; My meets</button>' : '';
+  var homeBtn = S.acct && S.screen === 'meet' ? '<button type="button" class="tab homebtn" data-act="home" title="' + (S.fromAdmin ? 'Back to the admin screen' : 'Back to your meets') + '">&lsaquo; ' + (S.fromAdmin ? 'Admin' : 'My meets') + '</button>' : '';
   var h = '<div class="tabrow">' + homeBtn + base.map(function(t){
     if (t[0] === 'penalty' && !usePZ()) return '<button type="button" class="tab" role="tab" aria-selected="false" aria-disabled="true" disabled title="Turn on Penalty Zone under Race format on the Setup tab">' + t[1] + '</button>';
     var badge = t[0] === 'redcards' && nRC ? '<span class="badge" title="Athletes with red cards">' + nRC + '</span>' : '';
@@ -4584,6 +4592,7 @@ function renderRaceBar(){
     var jo = S.event.judges[S.official - 1];
     h += '<div class="off-banner"><span>Officiating as <b>' + jtitle(S.official) + '</b>' + (jo.name ? ', ' + esc(jo.name) : '') + '</span><button type="button" class="btn sm" data-act="off-exit">Exit</button></div>';
   }
+  if (S.fromAdmin) h += '<div class="off-banner"><span>Viewing as <b>admin</b>: read-only, not your meet.</span><button type="button" class="btn sm" data-act="home">Back to admin</button></div>';
   if (inHeats() && S.tab !== 'howto') {
     var ids = S.official ? officiatingIds(S.official) : null, groups = '';
     for (var d = 1; d <= meet.divCount; d++) {
@@ -4770,7 +4779,7 @@ function howtoHTML(){
       '<li>Officials do not need an account. They scan the QR code on their judge tab, or type its code.</li>' +
       '<li>Export meet data on the Setup tab saves a meet as a backup file. Import from file on My meets restores it, in this copy of the app or another.</li>' +
       '<li>The DQ Board, on the Setup tab, is a public scoreboard for a TV or projector: every athlete&rsquo;s hip or bib # and red cards, in number order, with no sign-in needed. Cast the link to a Chromecast from Chrome, or open it full-screen over HDMI. It sizes its own text to fill the screen automatically; set Rows per column there to fix it at a specific number of rows instead, for example to force bigger text on a small field. On the Claude-hosted copy, if the link does not go straight to the board, choose &ldquo;View a DQ Board&rdquo; on the sign-in or My meets screen and type the meet code shown there instead. An athlete&rsquo;s number turns red once they are disqualified &mdash; either by reaching the red card count for a DQ, or by a last 100m red card from a supervisory Chief Judge, even with only that one card.</li>' +
-      '<li>An admin can open Admin from My meets to browse every account and see the meets they own. From there, an admin can archive or restore any meet, reset an official&rsquo;s codes on it, and suspend or lift the suspension on an account &mdash; all without needing that account&rsquo;s owner. Editing someone else&rsquo;s meet setup directly, and deleting a meet or a login outright, are not offered here. On the Firebase-hosted copy the first account ever created becomes an admin automatically, and any admin can make or remove others from that screen. On this Claude-hosted copy, admin access instead follows who can edit this artifact: the owner, and anyone they add as an editor in Claude&rsquo;s own sharing settings &mdash; there is no Make admin button here, though suspending an account and acting on a meet still work the same way.</li>' +
+      '<li>An admin can open Admin from My meets to browse every account and see the meets they own. From there, an admin can archive or restore any meet, reset an official&rsquo;s codes on it, and suspend or lift the suspension on an account &mdash; all without needing that account&rsquo;s owner. Open, on a meet, shows it read-only, with the same Export CSV, Export PDF and Export meet data tools its owner has, so an admin can pull a copy of anyone&rsquo;s results without changing anything; a banner marks the view and the back button returns to Admin. Editing someone else&rsquo;s meet setup directly, and deleting a meet or a login outright, are not offered here. On the Firebase-hosted copy the first account ever created becomes an admin automatically, and any admin can make or remove others from that screen. On this Claude-hosted copy, admin access instead follows who can edit this artifact: the owner, and anyone they add as an editor in Claude&rsquo;s own sharing settings &mdash; there is no Make admin button here, though suspending an account and acting on a meet still work the same way.</li>' +
       '<li>Edit name, next to your name on My meets, lets you choose what is shown there instead of whatever your sign-in provided &mdash; useful if it shows an email address or an unfamiliar name. It changes everywhere your name appears, including the admin screen. Clear the box to go back to your sign-in&rsquo;s own name.</li>' +
     '</ul></section>' +
 
@@ -6045,6 +6054,7 @@ document.addEventListener('click', function(e){
     case 'admin-archive-meet': confirmDlg('Archive ' + esc(b.dataset.name) + '?', 'It becomes read-only for everyone, including officials. It can be restored at any time.', 'Archive meet', function(){ adminArchiveMeet(b.dataset.uid, b.dataset.id, true); }); break;
     case 'admin-restore-meet': adminArchiveMeet(b.dataset.uid, b.dataset.id, false); break;
     case 'admin-reset-codes': confirmDlg('Create new codes?', 'This replaces the code for every official on this meet. Every earlier QR code and typed code stops working, including on devices using one right now.', 'Create new codes', function(){ adminResetCodes(b.dataset.uid, b.dataset.id); }); break;
+    case 'admin-open-meet': S.fromAdmin = true; LS.set(KEY + 'official', ''); openMeet(b.dataset.uid, b.dataset.id); break;
     case 'admin-export': adminExportCsv(); break;
     case 'signup': signUp(); break;
     case 'send-link': {
