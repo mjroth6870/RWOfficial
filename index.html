@@ -3703,11 +3703,41 @@ async function ensureGuest(){
   } catch(e){ toast('Could not sign in as a guest. Check the connection.'); return false; }
 }
 async function loadAccount(){
-  try { var sn = await db.doc('data/users/' + S.acct.uid + '/account').get(); S.acctDoc = !!(sn && sn.exists); } catch(e){ S.acctDoc = false; }
+  try { var sn = await db.doc('data/users/' + S.acct.uid + '/account').get(); S.acctDoc = !!(sn && sn.exists); applyCustomName(sn && sn.exists ? sn.data() : null); } catch(e){ S.acctDoc = false; }
   S.screen = S.acctDoc ? 'home' : 'signup';
   if (S.acctDoc) { subscribeMyMeets(); touchAccountDirectory(); subscribeIsAdmin(); }
   render();
   checkLegacy();
+}
+// A name someone has chosen for themselves takes over from whatever their sign-in provided, everywhere the app shows
+// their name (the account card, the admin directory, and so on) -- the original sign-in name is kept alongside it,
+// in case they ever clear the custom one.
+function applyCustomName(acctData){
+  if (ME) ME.rawName = ME.rawName || ME.name || '';
+  if (acctData && acctData.customName) { if (ME) ME.name = acctData.customName; }
+}
+async function renameAccount(newName){
+  if (!(S.acct && S.acct.uid)) return false;
+  newName = str(newName).trim().slice(0, 60);
+  try {
+    var sn = await db.doc('data/users/' + S.acct.uid + '/account').get();
+    var d = (sn && sn.exists && sn.data()) || {created:new Date().toISOString(), v:1};
+    if (newName) d.customName = newName; else delete d.customName;
+    await db.doc('data/users/' + S.acct.uid + '/account').set(d);
+  } catch(e){ toast('Your name could not be saved.'); return false; }
+  if (ME) ME.name = newName || ME.rawName || '';
+  touchAccountDirectory();
+  render();
+  return true;
+}
+function openRenameDialog(){
+  openDialog({
+    title:'Your name',
+    body:'<p>This is the name shown on your account, on your meets, and to any admin.</p><input id="rename-in" class="qr-link" autocomplete="off" maxlength="60" placeholder="Your name" value="' + esc((ME && ME.name) || '') + '">' +
+      ((ME && ME.rawName && ME.name !== ME.rawName) ? '<p class="rf-note">Your sign-in provided &ldquo;' + esc(ME.rawName) + '&rdquo;. Clear the box to use that again.</p>' : ''),
+    ok:'Save',
+    onOk:function(){ renameAccount($('#rename-in').value); }
+  });
 }
 /* ---------- Admin: a directory of every account, and who may open it ----------
    The directory (accounts/<uid>) is separate from the private data/users/<uid>/account marker above: it exists so an
@@ -3925,7 +3955,9 @@ async function importFile(input){
 function acctCardHTML(){
   var nm = ME && ME.name, em = ME && ME.email;
   return '<div class="acct-card">' + (ME && ME.avatarUrl ? '<img class="avatar" src="' + esc(ME.avatarUrl) + '" alt="">' : '<span class="avatar"></span>') +
-    '<span class="acct-who"><b>' + (esc(nm) || 'Your account') + '</b><span class="acct-email">' + (em ? esc(em) : 'Email not shared by your organization') + '</span></span>' + (S.standalone ? '<button type="button" class="btn sm signout" data-act="sign-out">Sign out</button>' : '') + '</div>';
+    '<span class="acct-who"><b>' + (esc(nm) || 'Your account') + '</b><span class="acct-email">' + (em ? esc(em) : 'Email not shared by your organization') + '</span></span>' +
+    '<button type="button" class="btn sm" data-act="rename-account" title="Change the name shown on your account">Edit name</button>' +
+    (S.standalone ? '<button type="button" class="btn sm signout" data-act="sign-out">Sign out</button>' : '') + '</div>';
 }
 function signupHTML(){
   var em = ME && ME.email;
@@ -4693,6 +4725,7 @@ function howtoHTML(){
       '<li>Export meet data on the Setup tab saves a meet as a backup file. Import from file on My meets restores it, in this copy of the app or another.</li>' +
       '<li>The DQ Board, on the Setup tab, is a public scoreboard for a TV or projector: every athlete&rsquo;s hip or bib # and red cards, in number order, with no sign-in needed. Cast the link to a Chromecast from Chrome, or open it full-screen over HDMI. It sizes its own text to fill the screen automatically; set Rows per column there to fix it at a specific number of rows instead, for example to force bigger text on a small field. On the Claude-hosted copy, if the link does not go straight to the board, choose &ldquo;View a DQ Board&rdquo; on the sign-in or My meets screen and type the meet code shown there instead. An athlete&rsquo;s number turns red once they are disqualified &mdash; either by reaching the red card count for a DQ, or by a last 100m red card from a supervisory Chief Judge, even with only that one card.</li>' +
       '<li>An admin can open Admin from My meets to browse every account and see the meets they own, read-only. On the Firebase-hosted copy the first account ever created becomes an admin automatically, and any admin can make or remove others from that screen. On this Claude-hosted copy, admin access instead follows who can edit this artifact: the owner, and anyone they add as an editor in Claude&rsquo;s own sharing settings &mdash; there is no Make admin button here.</li>' +
+      '<li>Edit name, next to your name on My meets, lets you choose what is shown there instead of whatever your sign-in provided &mdash; useful if it shows an email address or an unfamiliar name. It changes everywhere your name appears, including the admin screen. Clear the box to go back to your sign-in&rsquo;s own name.</li>' +
     '</ul></section>' +
 
     '<section class="rule"><h3>Opening and closing races<small>Recorder tab</small></h3><ul>' +
@@ -5934,6 +5967,7 @@ document.addEventListener('click', function(e){
     }
     case 'off-exit': exitOfficial(); break;
     case 'code-dialog': openCodeDialog(); break;
+    case 'rename-account': openRenameDialog(); break;
     case 'board-code-dialog': openBoardCodeDialog(); break;
     case 'qr-toggle': S.qrOpen = !S.qrOpen; if (S.qrOpen) ensureCodes(); render(); break;
     case 'qr-copy': {
