@@ -35,6 +35,21 @@ Any static host works instead (Cloudflare Pages, Netlify): publish `index.html` 
 3. Give officials the QR code from their judge tab. They never sign in.
 4. To broadcast standings, open the DQ Board section on the Setup tab and share its link: cast it to a TV with Chrome's Cast option, or open it full-screen over HDMI. It needs no sign-in.
 
+## The admin screen (Firebase copy)
+Any account can see whether it has admin access from **My meets**: an admin sees an **Admin** section there, opening a
+screen that lists every account and, read-only, the meets each one owns. The **first account ever created** on a fresh
+deployment becomes an admin automatically, with no console step needed. From then on, an existing admin can make or
+remove another account's admin access from that same screen. Archiving, resetting an official's codes, and suspending
+an account from here may come later; today it only looks.
+
+If you deployed before this feature existed, re-paste `firestore.rules` into Firestore > Rules and publish again: the
+new rules add the `accounts` and `admins` collections this screen depends on, alongside everything that was already
+there.
+
+On the Claude-hosted copy, admin access is not a separate thing this app manages: it follows Claude's own permission
+for who can edit that artifact (the owner, and anyone they add as an editor there). There is no Make admin button on
+that copy, and no `admins` collection is used there at all.
+
 ## Test the rules before a real meet
 In the Firebase console, Firestore > Rules > **Rules Playground**. Expected results:
 
@@ -50,8 +65,17 @@ In the Firebase console, Firestore > Rules > **Rules Playground**. Expected resu
 | Signed in, get | `/join/ABCDE` | Allowed |
 | Signed in, list | `/join` | Denied |
 | Organizer `X`, get | `/data/users/Y/account` | Denied |
+| Organizer `X` (not an admin), get | `/accounts/Y` | Denied |
+| Organizer `X` (not an admin), set | `/accounts/X` | Allowed |
+| Organizer `X` (an admin), list | `/accounts` | Allowed |
+| Organizer `X` (an admin), get | `/cfg/Y/meets/m1` | Allowed |
+| Organizer `X`, get | `/admins/X` | Allowed (this is how the app checks its own admin status) |
+| Organizer `X` (not an admin), set | `/admins/Y` | Denied |
 
 Two more worth running: **list** `ent` as a guest should be **Denied**, and **create** `cfg/orgX/meets/m1/races/d1h1` as a guest should be **Denied**.
+
+"An admin" above means a document already exists at `/admins/<their uid>`. To test that case in the Playground, first
+create one by hand under Firestore > Data: a document at `admins/<some uid>` with any field (for example `by: "test"`).
 
 These rules were checked in advance with Firebase's own rules parser (syntax) and with an independent evaluator that ran all
 of the above plus every read and write the app makes. That is not the same as Firebase's own emulator, so treat the

@@ -3022,6 +3022,7 @@ var qrcode = function() {
         id: last(path), path: path,
         get: function(){ return load().then(function(a){ return a.sdk.fs.getDoc(a.sdk.fs.doc(a.fs, path)); }).then(wrap, function(e){ throw mapErr(e); }); },
         set: function(data){ return load().then(function(a){ return a.sdk.fs.setDoc(a.sdk.fs.doc(a.fs, path), JSON.parse(JSON.stringify(data))); }).catch(function(e){ throw mapErr(e); }); },
+        delete: function(){ return load().then(function(a){ return a.sdk.fs.deleteDoc(a.sdk.fs.doc(a.fs, path)); }).catch(function(e){ throw mapErr(e); }); },
         onSnapshot: function(next, err){ return listen(function(a){ return a.sdk.fs.doc(a.fs, path); }, function(s){ next(wrap(s)); }, err); }
       }; },
       collection: function(path){ return { onSnapshot: function(next, err){
@@ -3185,6 +3186,12 @@ var S = {
   pendingBoard: null,             // a DQ Board link waiting for the meet to load
   dqOpen: false,                  // the DQ Board link panel open on Setup
   mainExists: null,               // whether the meet document was found (null = not checked yet)
+  isAdmin: false,                 // this account can open the admin screen (Firebase: has an admins/<uid> record; Claude-hosted: can edit this artifact)
+  adminAccounts: null,             // every account, once the admin screen has loaded them
+  adminSearch: '',
+  adminSel: null,                 // the uid of the account currently open in the admin screen, if any
+  adminSelMeets: null,             // that account's meets, once loaded
+  adminAdmins: null,               // (Firebase) every other admin's uid, for the admin management list
   qrOpen: false,                 // QR panel open on the judge tab
   official: 0,                   // judge number this device is officiating as (0 = normal app)
   offToken: '',
@@ -3680,6 +3687,8 @@ async function signOutNow(){
   LS.set(KEY + 'official', '');
   ME = {id:null, name:'', email:null, avatarUrl:'', anon:false}; S.acct = {uid:null}; S.acctDoc = false; S.meets = []; S.linkSent = '';
   if (mySub) { try { mySub(); } catch(e){} mySub = null; }
+  if (adminSub) { try { adminSub(); } catch(e){} adminSub = null; }
+  S.isAdmin = false; S.adminAccounts = null; S.adminSel = null; S.adminSelMeets = null; S.adminAdmins = null;
   S.screen = 'signin'; try { if (location.hash) location.hash = ''; } catch(e){}
   render();
 }
@@ -3696,9 +3705,51 @@ async function ensureGuest(){
 async function loadAccount(){
   try { var sn = await db.doc('data/users/' + S.acct.uid + '/account').get(); S.acctDoc = !!(sn && sn.exists); } catch(e){ S.acctDoc = false; }
   S.screen = S.acctDoc ? 'home' : 'signup';
-  if (S.acctDoc) subscribeMyMeets();
+  if (S.acctDoc) { subscribeMyMeets(); touchAccountDirectory(); subscribeIsAdmin(); }
   render();
   checkLegacy();
+}
+/* ---------- Admin: a directory of every account, and who may open it ----------
+   The directory (accounts/<uid>) is separate from the private data/users/<uid>/account marker above: it exists so an
+   admin can browse every account, by name and email, without needing anyone's raw id. Each person writes only their own
+   entry, on every sign-in, so it always reflects the sign-in they are using right now. */
+async function touchAccountDirectory(){
+  if (!(S.acct && S.acct.uid)) return;
+  try {
+    var prev = null; try { var sn = await db.doc('accounts/' + S.acct.uid).get(); if (sn && sn.exists) prev = sn.data(); } catch(e){}
+    var now = new Date().toISOString();
+    await db.doc('accounts/' + S.acct.uid).set({
+      name: (ME && ME.name) || '', email: (ME && ME.email) || null, avatarUrl: (ME && ME.avatarUrl) || '',
+      createdAt: (prev && prev.createdAt) || now, lastSeen: now
+    });
+    if (S.standalone && !prev) bootstrapFirstAdmin();      // the very first person to appear in the directory can become the first admin
+  } catch(e){}
+}
+// Whether this account may open the admin screen. Firebase: an admins/<uid> record exists. Claude-hosted: the platform's
+// own "can edit this artifact" permission (the artifact owner, and anyone they have added as an editor) is used instead
+// -- the app has no way to grant that itself, so there is no separate admins list to manage there.
+var adminSub = null;
+function subscribeIsAdmin(){
+  if (!S.standalone) {
+    (async function(){
+      S.isAdmin = false;
+      try { var uu = window.claude && window.claude.use ? await window.claude.use('user') : null; if (uu && uu.canEdit) S.isAdmin = !!(await uu.canEdit()); } catch(e){}
+      render();
+    })();
+    return;
+  }
+  if (adminSub || !S.acct || !S.acct.uid) return;
+  try { adminSub = db.doc('admins/' + S.acct.uid).onSnapshot(function(sn){ S.isAdmin = !!(sn && sn.exists); render(); }, function(){}); } catch(e){}
+}
+// The first account ever created claims admin automatically, so a fresh Firebase deployment has someone who can open
+// the admin screen without anyone needing console access. Guarded by a single sentinel document so it can only happen once.
+async function bootstrapFirstAdmin(){
+  try {
+    var b = await db.doc('meta/admin-bootstrap').get();
+    if (b && b.exists && b.data() && b.data().claimed) return;
+    await db.doc('admins/' + S.acct.uid).set({by:S.acct.uid, at:new Date().toISOString(), note:'first account'});
+    await db.doc('meta/admin-bootstrap').set({claimed:true, by:S.acct.uid, at:new Date().toISOString()});
+  } catch(e){}
 }
 function subscribeMyMeets(){
   if (mySub || !S.acct || !S.acct.uid) return;
@@ -3716,6 +3767,7 @@ async function signUp(){
   try { await db.doc('data/users/' + S.acct.uid + '/account').set({created:new Date().toISOString(), v:1}); }
   catch(e){ toast('Your account could not be created. This view may be read-only.'); return; }
   S.acctDoc = true; S.screen = 'home'; subscribeMyMeets(); render();
+  touchAccountDirectory(); subscribeIsAdmin();
 }
 function teardownMeet(){
   flushAll(); unsubRace();
@@ -3899,6 +3951,97 @@ function meetCardHTML(m, archived){
     '<div class="mc-act"><button class="btn' + (archived ? '' : ' primary') + '" data-act="open-meet" data-id="' + esc(m.id) + '">' + (archived ? 'View' : 'Open') + '</button>' +
     '<button class="btn" data-act="' + (archived ? 'restore-meet' : 'archive-meet') + '" data-id="' + esc(m.id) + '"' + (S.canWrite ? '' : ' disabled') + '>' + (archived ? 'Restore' : 'Archive') + '</button></div></li>';
 }
+/* ---------- Admin screen: every account, and (Firebase) who else is an admin ---------- */
+var adminAccSub = null, adminMeetsSub = null, adminAdminsSub = null;
+function goAdmin(){
+  if (!S.isAdmin) return;
+  S.screen = 'admin'; S.adminSel = null; S.adminSelMeets = null;
+  if (!adminAccSub) {
+    try {
+      adminAccSub = db.collection('accounts').onSnapshot(function(sn){
+        S.adminAccounts = sn.docs.map(function(d){ var x = d.data() || {}; return {uid:d.id, name:str(x.name), email:x.email || '', createdAt:str(x.createdAt), lastSeen:str(x.lastSeen)}; })
+          .sort(function(a, b){ return (b.lastSeen || '').localeCompare(a.lastSeen || ''); });
+        if (S.screen === 'admin') render();
+      }, function(){ S.adminAccounts = []; if (S.screen === 'admin') render(); });
+    } catch(e){ S.adminAccounts = []; }
+  }
+  if (S.standalone && !adminAdminsSub) {
+    try {
+      adminAdminsSub = db.collection('admins').onSnapshot(function(sn){
+        S.adminAdmins = sn.docs.map(function(d){ return d.id; });
+        if (S.screen === 'admin') render();
+      }, function(){ S.adminAdmins = []; if (S.screen === 'admin') render(); });
+    } catch(e){ S.adminAdmins = []; }
+  }
+  render();
+}
+function adminBack(){
+  if (S.adminSel) { S.adminSel = null; S.adminSelMeets = null; if (adminMeetsSub) { try { adminMeetsSub(); } catch(e){} adminMeetsSub = null; } render(); return; }
+  S.screen = 'home'; render();
+}
+function adminOpenAccount(uid){
+  S.adminSel = uid; S.adminSelMeets = null;
+  if (adminMeetsSub) { try { adminMeetsSub(); } catch(e){} adminMeetsSub = null; }
+  try {
+    adminMeetsSub = db.collection('cfg/' + uid + '/meets').onSnapshot(function(sn){
+      S.adminSelMeets = sn.docs.map(function(d){ var x = d.data() || {}; return {id:d.id, name:str(x.name), date:str(x.date), created:str(x.created), archived:x.archived === true}; })
+        .sort(function(a, b){ return (b.date || b.created || '').localeCompare(a.date || a.created || ''); });
+      if (S.adminSel === uid) render();
+    }, function(){ S.adminSelMeets = []; if (S.adminSel === uid) render(); });
+  } catch(e){ S.adminSelMeets = []; }
+  render();
+}
+async function adminSetAdmin(uid, on){
+  if (!(S.standalone && S.isAdmin)) return;
+  try {
+    if (on) await db.doc('admins/' + uid).set({by:S.acct.uid, at:new Date().toISOString()});
+    else await db.doc('admins/' + uid).delete();
+  } catch(e){ toast('That change could not be saved.'); }
+}
+function adminAccountRowHTML(a){
+  var isMe = a.uid === S.acct.uid, isAdm = S.standalone && S.adminAdmins && S.adminAdmins.indexOf(a.uid) >= 0;
+  return '<li class="mcard admin-row"><div class="mc-main"><b class="mc-name">' + (esc(a.name) || 'Unnamed account') + (isAdm ? ' <span class="jchip ac" title="Admin">A</span>' : '') + '</b>' +
+    '<span class="mc-sub">' + (a.email ? esc(a.email) : 'No email shared') + (a.lastSeen ? ' &middot; last seen ' + esc(fmtDate(a.lastSeen.slice(0, 10))) : '') + '</span></div>' +
+    '<div class="mc-act"><button class="btn" data-act="admin-open" data-id="' + esc(a.uid) + '">View meets</button>' +
+    (S.standalone && !isMe ? '<button class="btn" data-act="admin-toggle-admin" data-id="' + esc(a.uid) + '" data-v="' + (isAdm ? '0' : '1') + '"' + (S.canWrite ? '' : ' disabled') + '>' + (isAdm ? 'Remove admin' : 'Make admin') + '</button>' : '') + '</div></li>';
+}
+// A plain, non-interactive row: the admin screen is read-only for now, so this never offers Open, Archive or Restore
+// the way the person's own home screen does -- those act on the signed-in person's own meets, not whoever is being viewed here.
+function adminMeetRowHTML(m){
+  var when = m.date ? esc(fmtDate(m.date)) : 'No date';
+  return '<li class="mcard"><div class="mc-main"><b class="mc-name">' + (esc(m.name) || 'Untitled meet') + '</b><span class="mc-sub">' + when + (m.archived ? ' &middot; archived' : '') + '</span></div></li>';
+}
+function adminDetailHTML(){
+  var a = (S.adminAccounts || []).filter(function(x){ return x.uid === S.adminSel; })[0];
+  var meets = S.adminSelMeets;
+  var act = meets ? meets.filter(function(m){ return !m.archived; }) : [], arc = meets ? meets.filter(function(m){ return m.archived; }) : [];
+  return '<section class="band"><button type="button" class="btn sm" data-act="admin-back">&lsaquo; All accounts</button>' +
+    '<h2 class="sec-h" style="margin-top:10px">' + (a ? esc(a.name) || 'Unnamed account' : 'Account') + '</h2>' +
+    (a ? '<p class="off-note">' + (a.email ? esc(a.email) : 'No email shared') + ' &middot; created ' + (a.createdAt ? esc(fmtDate(a.createdAt.slice(0, 10))) : 'unknown') + '</p>' : '') +
+    (meets === null ? '<p class="off-note">Loading their meets&hellip;</p>' :
+      (meets.length ? '<h3 class="pz-h">Active <span class="count">' + act.length + '</span></h3>' + (act.length ? '<ul class="mlist">' + act.map(adminMeetRowHTML).join('') + '</ul>' : '<p class="off-note">None.</p>') +
+        '<h3 class="pz-h">Archived <span class="count">' + arc.length + '</span></h3>' + (arc.length ? '<ul class="mlist arch">' + arc.map(adminMeetRowHTML).join('') + '</ul>' : '<p class="off-note">None.</p>')
+      : '<p class="off-note">This account has no meets.</p>')) + '</section>';
+}
+function adminHTML(){
+  if (!S.isAdmin) return '<div class="home"><p class="lead">You do not have admin access.</p></div>';
+  if (S.adminSel) return '<div class="home">' + adminDetailHTML() + '</div>';
+  var q = S.adminSearch.trim().toLowerCase();
+  var rows = S.adminAccounts === null ? null : S.adminAccounts.filter(function(a){ return !q || (a.name || '').toLowerCase().indexOf(q) >= 0 || (a.email || '').toLowerCase().indexOf(q) >= 0; });
+  return '<div class="home"><section class="band"><button type="button" class="btn sm" data-act="admin-back">&lsaquo; Your meets</button>' +
+    '<div class="home-h" style="margin-top:10px"><h2 class="sec-h">All accounts' + (S.adminAccounts ? ' <span class="count">' + S.adminAccounts.length + '</span>' : '') + '</h2>' +
+    '<div class="mc-act">' + (dl ? '<button class="btn" data-act="admin-export">Export CSV</button>' : '') + '</div></div>' +
+    '<input class="qr-link" id="admin-search" placeholder="Search by name or email" value="' + esc(S.adminSearch) + '" data-f="admin-search">' +
+    (rows === null ? '<p class="off-note">Loading accounts&hellip;</p>' : (rows.length ? '<ul class="mlist">' + rows.map(adminAccountRowHTML).join('') + '</ul>' : '<p class="off-note">No accounts match.</p>')) +
+    '<p class="off-note">Read-only for now: archiving, resetting an official&rsquo;s codes, and suspending an account from here may come later.</p></section></div>';
+}
+async function adminExportCsv(){
+  if (!dl || !S.adminAccounts) return;
+  var rows = [['Name', 'Email', 'Created', 'Last seen']].concat(S.adminAccounts.map(function(a){ return [a.name, a.email, a.createdAt, a.lastSeen]; }));
+  var csv = rows.map(function(r){ return r.map(function(v){ v = str(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }).join(','); }).join('\r\n');
+  try { await dl.save({filename:'accounts.csv', data:csv}); toast('Accounts saved.'); } catch(e){ toast('Could not save the file in this view.'); }
+}
+
 function homeHTML(){
   var act = S.meets.filter(function(m){ return !m.archived; }), arc = S.meets.filter(function(m){ return m.archived; });
   return '<div class="home">' +
@@ -3909,12 +4052,14 @@ function homeHTML(){
     '<section class="band"><h2 class="sec-h">Archived meets <span class="count">' + arc.length + '</span></h2>' +
     (arc.length ? '<ul class="mlist arch">' + arc.map(function(m){ return meetCardHTML(m, true); }).join('') + '</ul>' : '<p class="off-note">Meets you archive, and your previous meets when you start a new one, are kept here. They are read-only until you restore them.</p>') + '</section>' +
     '<section class="band"><h2 class="sec-h">Officiating a race?</h2><p class="off-note">Officials do not need an account. Scan the QR code the Recorder gave you, or type its code. To give an official their code, open a meet, go to a judge&rsquo;s tab and show its QR code.</p><div class="toolbar"><button class="btn" data-act="code-dialog">Enter official code</button></div></section>' +
-    '<section class="band"><h2 class="sec-h">Watching from a screen?</h2><p class="off-note">The DQ Board needs no account. Type the meet code shown on its Setup tab.</p><div class="toolbar"><button class="btn" data-act="board-code-dialog">View a DQ Board</button></div></section></div>';
+    '<section class="band"><h2 class="sec-h">Watching from a screen?</h2><p class="off-note">The DQ Board needs no account. Type the meet code shown on its Setup tab.</p><div class="toolbar"><button class="btn" data-act="board-code-dialog">View a DQ Board</button></div></section>' +
+    (S.isAdmin ? '<section class="band"><h2 class="sec-h">Admin</h2><p class="off-note">Every account, and the meets they own.</p><div class="toolbar"><button class="btn" data-act="go-admin">Open admin</button></div></section>' : '') + '</div>';
 }
 function accountHTML(){
   if (S.screen === 'signin') return signinHTML();
   if (S.screen === 'signup') return signupHTML();
   if (S.screen === 'home') return homeHTML();
+  if (S.screen === 'admin') return adminHTML();
   return '<div class="home"><p class="lead">Loading your account.</p></div>';
 }
 function renderAccount(){
@@ -4547,6 +4692,7 @@ function howtoHTML(){
       '<li>Officials do not need an account. They scan the QR code on their judge tab, or type its code.</li>' +
       '<li>Export meet data on the Setup tab saves a meet as a backup file. Import from file on My meets restores it, in this copy of the app or another.</li>' +
       '<li>The DQ Board, on the Setup tab, is a public scoreboard for a TV or projector: every athlete&rsquo;s hip or bib # and red cards, in number order, with no sign-in needed. Cast the link to a Chromecast from Chrome, or open it full-screen over HDMI. It sizes its own text to fill the screen automatically; set Rows per column there to fix it at a specific number of rows instead, for example to force bigger text on a small field. On the Claude-hosted copy, if the link does not go straight to the board, choose &ldquo;View a DQ Board&rdquo; on the sign-in or My meets screen and type the meet code shown there instead. An athlete&rsquo;s number turns red once they are disqualified &mdash; either by reaching the red card count for a DQ, or by a last 100m red card from a supervisory Chief Judge, even with only that one card.</li>' +
+      '<li>An admin can open Admin from My meets to browse every account and see the meets they own, read-only. On the Firebase-hosted copy the first account ever created becomes an admin automatically, and any admin can make or remove others from that screen. On this Claude-hosted copy, admin access instead follows who can edit this artifact: the owner, and anyone they add as an editor in Claude&rsquo;s own sharing settings &mdash; there is no Make admin button here.</li>' +
     '</ul></section>' +
 
     '<section class="rule"><h3>Opening and closing races<small>Recorder tab</small></h3><ul>' +
@@ -5806,6 +5952,11 @@ document.addEventListener('click', function(e){
     case 'dq-toggle': S.dqOpen = !S.dqOpen; render(); break;
     case 'dq-copy': { var dqi = $('#dq-link'); if (dqi) { dqi.select(); try { document.execCommand('copy'); } catch(e){} try { navigator.clipboard && navigator.clipboard.writeText(dqi.value); } catch(e){} toast('Link copied.'); } break; }
     case 'export-meet': exportMeet(); break;
+    case 'go-admin': goAdmin(); break;
+    case 'admin-back': adminBack(); break;
+    case 'admin-open': adminOpenAccount(b.dataset.id); break;
+    case 'admin-toggle-admin': adminSetAdmin(b.dataset.id, b.dataset.v === '1'); break;
+    case 'admin-export': adminExportCsv(); break;
     case 'signup': signUp(); break;
     case 'send-link': {
       var em = ($('#si-email') || {}).value || ''; em = em.trim();
@@ -5880,6 +6031,7 @@ document.addEventListener('input', function(e){
   var t = e.target;
   if (t.dataset && t.dataset.bind === 'pz') return;              // Penalty Zone times are committed when the box is left
   if (t.id === 'jq') { S.filter = t.value; renderJudgeList(); return; }
+  if (t.id === 'admin-search') { S.adminSearch = t.value; var ui = captureUI(); render(); restoreUI(ui); return; }
   var b = t.dataset && t.dataset.bind;
   if (!b || (b === 'ent' ? roEnt() : ro())) return;
   var k = t.dataset.k;
