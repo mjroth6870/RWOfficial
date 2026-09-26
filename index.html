@@ -3507,10 +3507,47 @@ function localKey(path){
   if (path === 'event/main') return KEY + 'event';
   return m ? KEY + 'j' + m[1] : KEY + path;
 }
-function persistNow(path){
+// Whether a queued path holds a judge's entries (as opposed to the meet or race setup the Recorder controls).
+function isEntriesPath(path){ return /(^|\/)judges\/j(1[0-2]|[1-9])$/.test(path); }
+// Which race, and which judge, a queued judges/... path belongs to. Read from the path itself, not the device's
+// current S.raceId or S.tab: by the time a queued save reaches the server the device may already be looking at a
+// different race (heats mode) or a different judge tab.
+// Which race, and which judge, a queued judges/... path belongs to. Read from the path itself, not the device's
+// current S.raceId or S.tab: by the time a queued save reaches the server the device may already be looking at a
+// different race (heats mode) or a different judge tab. Excludes PZM (position 12): unlike every other position,
+// several of its own fields (the countdown length, a release) are already meant to be usable outside an open race,
+// so it is not, as a whole path, well described by a single "must be open" rule the way positions 1-11 are.
+function parseEntryPath(path){
+  var m = /^races\/([^\/]+)\/judges\/j(1[01]|[1-9])$/.exec(path) || /^judges\/j(1[01]|[1-9])$/.exec(path);
+  return m ? {race: m.length > 2 ? m[1] : 'main', n: +m[m.length - 1]} : null;
+}
+// A judge's own cached copy of the race status can be a moment behind the Recorder's: closing a race does not reach
+// every judge's device the instant it happens. Right before an entries save actually reaches the server -- not at
+// the moment the judge tapped something, which would make every tap wait on a network round trip -- this re-reads
+// the real status directly, so a save made in that gap is refused rather than slipping through on stale information.
+async function freshRaceStatus(raceId){
+  try { var sn = await db.doc(phys('event/main')).get(); var st = sn && sn.exists && sn.data() && sn.data().statuses; return (st && st[raceId]) || 'upcoming'; }
+  catch(e){ return null; }   // the check itself failed (offline, etc.): do not second-guess the local state over this
+}
+async function persistNow(path){
   var data = payloadFor(path);
   if (!data) return Promise.resolve();
-  if (S.mode === 'live' && db) { var wr = db.doc(phys(path)).set(data); return path === 'event/main' && S.acct && S.acct.mine ? wr.then(syncMeta) : wr; }
+  if (S.mode === 'live' && db) {
+    var ep = isEntriesPath(path) ? parseEntryPath(path) : null;
+    if (ep) {
+      var fresh = await freshRaceStatus(ep.race);
+      if (fresh !== null && fresh !== 'open') {
+        S.event.statuses[ep.race] = fresh;
+        try {
+          var real = await db.doc(phys(path)).get();
+          rc(ep.race).entries[ep.n] = normEntries(real && real.exists ? real.data() : null);   // show what is actually saved, not the change that was refused
+        } catch(e){}
+        if (ep.race === S.raceId) { toast('This race was closed just as you made that change, so it was not saved.'); render(); }
+        return Promise.resolve();
+      }
+    }
+    var wr = db.doc(phys(path)).set(data); return path === 'event/main' && S.acct && S.acct.mine ? wr.then(syncMeta) : wr;
+  }
   LS.set(localKey(path), JSON.stringify(data));
   return Promise.resolve();
 }
