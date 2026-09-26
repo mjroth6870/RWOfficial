@@ -398,6 +398,7 @@ thead .cin{font-weight:600;height:100%;text-align:center;color:var(--ink)}
 .dlg-form{display:grid;gap:8px}
 .dlg-l{font-weight:600;font-size:14px;color:var(--muted)}
 .arch-banner{border-color:var(--orange);background:var(--orange-soft);color:var(--orange-ink)}
+.warn-banner{border-color:var(--yellow);background:var(--yellow-soft);color:var(--yellow-ink)}
 .homebtn{font-weight:600}
 .signout{margin-left:auto}
 .qrpanel{margin:0 0 12px}
@@ -3196,6 +3197,7 @@ var S = {
   adminAdmins: null,               // (Firebase) every other admin's uid, for the admin management list
   suspended: false,                // this account has been suspended by an admin: read-only everywhere, even its own meets
   fromAdmin: false,                // this meet was opened from the admin screen; the back button should return there, not to My meets
+  otherDevice: 0,                  // a judge position (1-11; never PZM) that another device also appears to be actively recording as, right now
   qrOpen: false,                 // QR panel open on the judge tab
   official: 0,                   // judge number this device is officiating as (0 = normal app)
   offToken: '',
@@ -3350,11 +3352,12 @@ function inHeats(){ return meet.raceMode === 'heats'; }
 // judge entries under ent/<meet>/..., where officials can write. Everything else in the app uses the plain logical paths.
 function phys(path){
   if (!S.acct || !S.acct.meetId || S.acct.legacy) return path;
-  return /(^|\/)judges(\/|$)/.test(path) ? 'ent/' + S.acct.meetId + '/' + path : 'cfg/' + S.acct.owner + '/meets/' + S.acct.meetId + '/' + path;
+  return /(^|\/)(judges|presence)(\/|$)/.test(path) ? 'ent/' + S.acct.meetId + '/' + path : 'cfg/' + S.acct.owner + '/meets/' + S.acct.meetId + '/' + path;
 }
 function metaPath(){ return 'cfg/' + S.acct.owner + '/meets/' + S.acct.meetId; }
 function racePath(id){ return id === 'main' ? 'event/main' : 'races/' + id; }
 function entryPath(id, n){ return id === 'main' ? 'judges/j' + n : 'races/' + id + '/judges/j' + n; }
+function presencePath(id, n){ return id === 'main' ? 'presence/j' + n : 'races/' + id + '/presence/j' + n; }
 function raceParts(id){ var m = /^d(\d{1,2})h(\d{1,2})$/.exec(id || ''); return m ? {d:+m[1], h:+m[2]} : null; }
 function validRace(id){
   var p = raceParts(id);
@@ -3547,7 +3550,9 @@ async function persistNow(path){
         return Promise.resolve();
       }
     }
-    var wr = db.doc(phys(path)).set(data); return path === 'event/main' && S.acct && S.acct.mine ? wr.then(syncMeta) : wr;
+    var wr = db.doc(phys(path)).set(data);
+    if (ep) announcePresence(ep.race, ep.n);
+    return path === 'event/main' && S.acct && S.acct.mine ? wr.then(syncMeta) : wr;
   }
   LS.set(localKey(path), JSON.stringify(data));
   return Promise.resolve();
@@ -3582,6 +3587,50 @@ async function run(key){
    Connection: live (shared db) or local fallback
    ================================================================ */
 var raceSubs = [], bailT = 0;
+// One id per time this page loads: a reload counts as a new device for this purpose, which is what we want -- the
+// point is catching two devices open on the same judge position at once, not tracking any one device over time.
+var SID = Math.random().toString(36).slice(2) + Date.now().toString(36);
+var presenceSub = null, presenceKey = null, presenceOtherSid = null, presenceDismissSid = null;
+// Which judge position, if any, this device is currently positioned to record on -- position 1 to NMAIN+NAC only:
+// PZM (12) is deliberately never matched, since more than one device there is expected to be normal.
+function judgeTabN(){
+  var m = /^j(\d+)$/.exec(S.tab), n = m ? +m[1] : 0;
+  return (n >= 1 && n <= NMAIN + NAC) ? n : 0;
+}
+function teardownPresence(){
+  if (presenceSub) { try { presenceSub(); } catch(e){} presenceSub = null; }
+  presenceKey = null; S.otherDevice = 0;
+}
+// Tears down the listener once it stops being relevant (left the tab, race closed, lost write access, and so on).
+// It is never what starts one: merely viewing a judge's tab -- including an owner checking on it, or briefly opening
+// it to copy a QR code -- is not "recording," and must never be flagged as if it were. Only announcePresence, below,
+// called right when this device's own entries save actually reaches the server, ever does that.
+function syncPresence(){
+  var n = judgeTabN();
+  var stillRelevant = presenceKey && n && S.started && raceOpen() && !roEnt() && presenceKey === (S.raceId + '/' + n);
+  if (!stillRelevant && presenceKey) teardownPresence();
+}
+// Announces this device on judge position n in race raceId, right as its own entries save for that position reaches
+// the server, and starts listening there for a conflicting announcement from another device, if not already doing
+// so for this exact race and position. Deliberately not a security feature (a merely stale, no-longer-open device is
+// never made to lose a write over this): it is a heads-up so two devices do not both work the same paddle at once.
+function announcePresence(raceId, n){
+  var key = raceId + '/' + n;
+  try {
+    var path = phys(presencePath(raceId, n));
+    db.doc(path).set({sid: SID, at: new Date().toISOString()}).catch(function(){});
+    if (presenceKey === key) return;
+    teardownPresence();
+    presenceKey = key;
+    presenceSub = db.doc(path).onSnapshot(function(sn){
+      var d = sn && sn.exists ? sn.data() : null;
+      var otherSid = d && d.sid && d.sid !== SID ? d.sid : null;
+      presenceOtherSid = otherSid;
+      S.otherDevice = (otherSid && otherSid !== presenceDismissSid) ? n : 0;
+      scheduleRender();
+    }, function(){});
+  } catch(e){}
+}
 function unsubRace(){ raceSubs.forEach(function(f){ try { f(); } catch(e){} }); raceSubs = []; }
 function subErr(err){
   if (err && err.code === 'revoked') { S.canWrite = false; toast('Access to this page changed. It is now read-only.'); }
@@ -3848,7 +3897,7 @@ async function signUp(){
   touchAccountDirectory(); subscribeIsAdmin(); subscribeSuspended();
 }
 function teardownMeet(){
-  flushAll(); unsubRace();
+  flushAll(); unsubRace(); teardownPresence(); presenceDismissSid = null;
   [metaSub, mainSub, racesSub].forEach(function(f){ if (f) { try { f(); } catch(e){} } });
   metaSub = mainSub = racesSub = null;
   Q = {}; RC = {}; meet = blankMeet();
@@ -4438,6 +4487,7 @@ function render(){
   if (S.screen !== 'meet') { renderAccount(); return; }
   if (S.tab === 'penalty' && S.started && !usePZ() && !S.official) { S.tab = 'recorder'; LS.set(KEY + 'tab', S.tab); }     // turned off while it was open
   var ui = captureUI();
+  syncPresence();
   renderHeader(); renderNav(); renderRaceBar(); renderView();
   fitGrid();
   restoreUI(ui);
@@ -4631,6 +4681,7 @@ function renderRaceBar(){
     h += '<div class="off-banner"><span>Officiating as <b>' + jtitle(S.official) + '</b>' + (jo.name ? ', ' + esc(jo.name) : '') + '</span><button type="button" class="btn sm" data-act="off-exit">Exit</button></div>';
   }
   if (S.fromAdmin) h += '<div class="off-banner"><span>Viewing as <b>admin</b>: read-only, not your meet.</span><button type="button" class="btn sm" data-act="home">Back to admin</button></div>';
+  if (S.otherDevice) h += '<div class="off-banner warn-banner"><span>Another device also appears to be recording as <b>' + jtitle(S.otherDevice) + '</b> right now. Only one device should record for a position at a time, or entries from one may overwrite the other\'s.</span><button type="button" class="btn sm" data-act="other-device-dismiss">Dismiss</button></div>';
   if (inHeats() && S.tab !== 'howto') {
     var ids = S.official ? officiatingIds(S.official) : null, groups = '';
     for (var d = 1; d <= meet.divCount; d++) {
@@ -4838,6 +4889,12 @@ function howtoHTML(){
       '<li>Information from the judges reaches the Recorder immediately, who then communicates with the DQ Board official.</li>' +
       '<li>This removes the need for card runners and speeds up Penalty Zone and DQ decisions for the athletes.</li>' +
       '<li><span class="dot live"></span><b>Live</b> means every open device shares the same meet. <span class="dot"></span><b>This device only</b> means live sync is not available here, so entries stay in this browser.</li>' +
+    '</ul></section>' +
+
+    '<section class="rule"><h3>FAQ</h3><ul>' +
+      '<li><b>Will having many judges recording at once slow the app down or cause errors?</b> No. Marking a paddle or card does not save the instant you tap it &mdash; it waits a fraction of a second in case you tap something else, then saves once, so quick, repeated taps do not flood the connection. The number of judges a race walk meet actually uses is well within what this comfortably handles.</li>' +
+      '<li><b>What happens if my connection drops while I&rsquo;m recording?</b> The app retries automatically a couple of times over a few seconds. If it is still failing after that, it tells you to check your connection and try again &mdash; it does not keep retrying by itself once you are back online, so if you see that message, touch the entry again once you have a signal.</li>' +
+      '<li><b>What if the same judge&rsquo;s code ends up open on two phones at once?</b> Each save replaces that judge&rsquo;s whole sheet, so the later save can overwrite entries the other phone made. Only one device should record for a given position at a time. If the app notices this happening during an open race, it warns both devices. Penalty Zone is the one exception: more than one device there is expected, so it is never warned about.</li>' +
     '</ul></section>' +
   '</div>';
 }
@@ -6059,6 +6116,7 @@ document.addEventListener('click', function(e){
       break;
     }
     case 'off-exit': exitOfficial(); break;
+    case 'other-device-dismiss': presenceDismissSid = presenceOtherSid; S.otherDevice = 0; render(); break;
     case 'code-dialog': openCodeDialog(); break;
     case 'rename-account': openRenameDialog(); break;
     case 'board-code-dialog': openBoardCodeDialog(); break;
