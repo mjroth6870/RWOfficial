@@ -226,7 +226,7 @@ main{padding:0 16px 56px}
 .pz-in{font-variant-numeric:tabular-nums}
 .pz-t{display:grid;justify-items:center;gap:4px;min-height:44px;align-content:center}
 .pz-cd{display:inline-block;min-width:92px;padding:8px 12px;border-radius:8px;background:var(--surface-2);border:1px solid var(--line-strong);text-align:center;font:700 30px/1 var(--cond);font-variant-numeric:tabular-nums}
-.pz-cd.warn{background:var(--yellow);color:var(--on-yellow);border-color:var(--yellow)}
+.pz-cd.pz-warn{background:var(--yellow);color:var(--on-yellow);border-color:var(--yellow)}
 .pz-cd.done{background:var(--ink);color:var(--bg);border-color:var(--ink)}      /* time is up: not yellow, which is only for the last 10 seconds */
 .pz-st,.pz-el{font-size:13px;color:var(--muted);text-align:center}
 .pz-chk{white-space:nowrap}
@@ -4584,7 +4584,7 @@ function pzTick(){
   for (var i = 0; i < cds.length; i++) {
     var left = +cds[i].getAttribute('data-end') - now, up = left <= 0, txt = up ? '0:00' : pzFmt(left), row = cds[i].closest('.pzrow'), st = row && row.querySelector('.pz-st');
     if (cds[i].textContent !== txt) cds[i].textContent = txt;
-    cds[i].classList.toggle('warn', !up && left <= 10000);
+    cds[i].classList.toggle('pz-warn', !up && left <= 10000);
     cds[i].classList.toggle('done', up);
     if (row) { row.classList.toggle('run', !up); row.classList.toggle('time', up); }
     if (st) st.textContent = up ? 'Time is up: release the athlete' : 'Serving';
@@ -4630,7 +4630,7 @@ function pzRowHTML(r, sel, canStart){
   var a = r.a, st = r.st, cd = '';
   if (st.a && !st.r && !st.served) {
     var up = st.left <= 0;
-    cd = '<span class="pz-cd' + (up ? ' done' : st.left <= 10000 ? ' warn' : '') + '" role="timer" data-end="' + st.end + '">' + (up ? '0:00' : pzFmt(st.left)) + '</span>' +
+    cd = '<span class="pz-cd' + (up ? ' done' : st.left <= 10000 ? ' pz-warn' : '') + '" role="timer" data-end="' + st.end + '">' + (up ? '0:00' : pzFmt(st.left)) + '</span>' +
       '<span class="pz-st">' + (up ? 'Time is up: release the athlete' : 'Serving') + '</span>';
   } else if (st.a && st.r) cd = '<span class="pz-el">In the zone ' + pzDur(st.r - st.a) + '</span>';
   var served = '<label class="chk pz-chk"><input type="checkbox" data-act="pz-served" data-aid="' + a.id + '" data-f="pzv:' + a.id + '"' + (st.served ? ' checked' : '') + (roEnt() ? ' disabled' : '') + '><span>Penalty Served</span></label>';
