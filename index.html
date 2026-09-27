@@ -4633,7 +4633,8 @@ function pzRowHTML(r, sel, canStart){
     cd = '<span class="pz-cd' + (up ? ' done' : st.left <= 10000 ? ' pz-warn' : '') + '" role="timer" data-end="' + st.end + '">' + (up ? '0:00' : pzFmt(st.left)) + '</span>' +
       '<span class="pz-st">' + (up ? 'Time is up: release the athlete' : 'Serving') + '</span>';
   } else if (st.a && st.r) cd = '<span class="pz-el">In the zone ' + pzDur(st.r - st.a) + '</span>';
-  var served = '<label class="chk pz-chk"><input type="checkbox" data-act="pz-served" data-aid="' + a.id + '" data-f="pzv:' + a.id + '"' + (st.served ? ' checked' : '') + (roEnt() ? ' disabled' : '') + '><span>Penalty Served</span></label>';
+  var svDis = roEnt() || !st.a, svWhy = roEnt() ? '' : !st.a ? 'Record the arrival first.' : st.served ? 'Not served after all' : 'Stop the countdown, record the release time as now, and mark the penalty served';
+  var served = '<label class="chk pz-chk" title="' + esc(svWhy) + '"><input type="checkbox" data-act="pz-served" data-aid="' + a.id + '" data-f="pzv:' + a.id + '"' + (st.served ? ' checked' : '') + (svDis ? ' disabled' : '') + '><span>Penalty Served</span></label>';
   return '<li class="pzrow ' + st.state + (r.dq ? ' dq' : '') + '" data-aid="' + a.id + '"><div class="pz-who">' + whoHTML(a) +
     '<span class="pz-meta">' + r.c + ' red card' + (r.c === 1 ? '' : 's') + (r.dq ? ' <em class="stx dq">DQ</em>' : '') + '</span></div>' +
     '<div class="pz-box">' + pzTimeBox(r, 'a', st.a, canStart, sel) + pzTimeBox(r, 'r', st.r, canStart, sel) + '</div>' +
@@ -4829,7 +4830,7 @@ function howtoHTML(){
       '<li>Under Judges in this race, turn on the judges working this race. Judges who are off are grey, and are hidden from the Recorder and Red Cards tabs and from exports.</li>' +
       '<li>Set how many red cards send an athlete to the Penalty Zone or result in a DQ. The default is a DQ at 3.</li>' +
       '<li>Under Race format, check Penalty Zone to turn on the Penalty Zone tab, next to Red Cards. The tab stays greyed out until then. Once it is on, PZM (Penalty Zone Manager) can be turned on under Judges in this race. The PZM gets a QR code, shown on the Penalty Zone tab, that opens only that tab on their own device.</li>' +
-      '<li>On the Penalty Zone tab, choose the countdown time for the race: 30 seconds, or 1 to 5 minutes. Athletes appear there when they receive the red card that sends them to the Penalty Zone. Record the time each arrives (the clock button, or type it) to start their countdown, which turns yellow for the last 10 seconds. Record the time they are released and Penalty Served is ticked. A PZ marker then appears in the Red Cards column of the Recorder and Red Cards tabs, and DQ is added to it if a later red card disqualifies them.</li>' +
+      '<li>On the Penalty Zone tab, choose the countdown time for the race: 30 seconds, or 1 to 5 minutes. Athletes appear there when they receive the red card that sends them to the Penalty Zone. Record the time each arrives (the clock button, or type it) to start their countdown, which turns yellow for the last 10 seconds. Checking Penalty Served stops the countdown, records the release time as now, and releases the athlete, all in one step; the clock button is still there for recording a specific release time instead. A PZ marker then appears in the Red Cards column of the Recorder and Red Cards tabs, and DQ is added to it if a later red card disqualifies them.</li>' +
       '<li>Load sample race and Clear all judge entries are at the bottom of the Setup tab.</li>' +
     '</ul></section>' +
 
@@ -6061,8 +6062,15 @@ document.addEventListener('click', function(e){
     }
     case 'pz-served': {
       if (roEnt()) { b.checked = !b.checked; break; }
-      var pzv = ent(PZM, b.dataset.aid); pzv.pzv = pzv.pzv ? '' : '1';
-      queueEntries(PZM, 60); render();
+      var svAid = b.dataset.aid, sve = ent(PZM, svAid);
+      if (sve.pzv) { sve.pzv = ''; queueEntries(PZM, 60); render(); break; }   // unchecking: just clear the served flag, keep any release time as-is
+      if (!sve.pza) { b.checked = false; toast('Record the arrival first.'); break; }
+      if (sve.pzr) { sve.pzv = '1'; queueEntries(PZM, 60); render(); break; }  // a release time is already recorded: just mark it served, without changing that time
+      if (pzState(svAid, Date.now()).state === 'run') {
+        b.checked = false;   // put the checkbox back to unchecked until this is confirmed; a render() here would not touch it, since nothing in the app's own state has changed yet
+        var svA = findAth(svAid);
+        confirmDlg('Release before the time is up?', 'The countdown for ' + esc(svA ? athLabel(svA) : 'this athlete') + ' has not finished. Release them now anyway?', 'Release', function(){ pzRelease(svAid, Date.now()); });
+      } else pzRelease(svAid, Date.now());
       break;
     }
     case 'pz-preset': {
