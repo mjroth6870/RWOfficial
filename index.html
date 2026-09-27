@@ -4796,6 +4796,7 @@ function penaltyHTML(){
     }).join('') + '</div>' +
     '<p class="rf-note">' + (sel ? 'Arrivals start a ' + pzLabel(sel) + ' countdown. One already counting down keeps its length.' : 'Choose a countdown time. Arrivals cannot be recorded until you do.') + (canOp && !raceOpen() ? ' Arrivals can be recorded once the race is open.' : '') + '</p></div>';
   var g = pzGroups(pzAthletes());
+  if (dl) h += '<div class="toolbar noprint"><span class="sp"></span><button class="btn" data-act="pdf" data-k="pz">Export PDF</button></div>';
   h += g.todo.length + g.served.length + g.dq.length
     ? pzSection('Waiting or serving', g.todo, sel, canStart) + pzSection('Served', g.served, sel, canStart) + pzSection('Disqualified before serving', g.dq, sel, canStart)
     : '<p class="off-note">No athletes are in the Penalty Zone yet.</p>';
@@ -4837,7 +4838,7 @@ function howtoHTML(){
     '<section class="rule"><h3>Recorder<small>Recorder tab</small></h3><ul>' +
       '<li>Enter athlete information on the Recorder tab only. It fills in every other tab.</li>' +
       '<li>Every athlete needs a name and the numbers chosen under Athlete identification on the Setup tab (hip/lane # and/or bib #).</li>' +
-      '<li>Use Export PDF or Export CSV on the Recorder and Red Cards tabs to keep a copy of the race. The Red cards column, and the Status column in the CSV, mark athletes PZ (penalty served) and DQ.</li>' +
+      '<li>Use Export PDF or Export CSV on the Recorder and Red Cards tabs, or Export PDF on the Penalty Zone tab, to keep a copy of the race. The Red cards column, and the Status column in the CSV, mark athletes PZ (penalty served) and DQ. In a heats meet, each export covers the race currently open; switch races to export another.</li>' +
     '</ul></section>' +
 
     '<section class="rule"><h3>Red Cards<small>Red Cards tab</small></h3><ul>' +
@@ -5969,28 +5970,158 @@ function buildPDF(JS, kind, paper){
   return doc;
 }
 
+// Penalty Zone PDF: a flat list rather than judge columns, since there is nothing judge-by-judge to show here. One
+// export per race, exactly like Recorder and Red Cards: switch races first (in a heats meet), then export each in turn.
+function buildPZPDF(JS, paper){
+  var ev = S.event, big = paper === 'tabloid';
+  var PW = big ? 1224 : 792, PH = big ? 792 : 612, M = 28;
+  var doc = new JS({orientation:'landscape', unit:'pt', format:[PW, PH], compress:true});
+  var evName = pdfSafe(ev.name);
+  doc.setProperties({title:'Race Walk Officiating - Penalty Zone' + (evName ? ' - ' + evName : '') + (inHeats() ? ' - ' + pdfSafe(raceLabel(S.raceId)) : ''), creator:'Race Walk Officiating'});
+
+  function setF(bold, size, c){ doc.setFont('helvetica', bold ? 'bold' : 'normal'); doc.setFontSize(size); doc.setTextColor(c[0], c[1], c[2]); }
+  function fill(c){ doc.setFillColor(c[0], c[1], c[2]); }
+  function stroke(c, w){ doc.setDrawColor(c[0], c[1], c[2]); doc.setLineWidth(w); }
+  function box(x, y, w, h, bg){ fill(bg); stroke(PC.line, 0.5); doc.rect(x, y, w, h, 'FD'); }
+  function mid(t, x, y){ doc.text(t, x, y, {align:'center', baseline:'middle'}); }
+  function left(t, x, y){ doc.text(t, x, y, {baseline:'middle'}); }
+  function fit(t, w){
+    t = pdfSafe(t);
+    if (doc.getTextWidth(t) <= w) return t;
+    while (t.length > 1 && doc.getTextWidth(t + '...') > w) t = t.slice(0, -1);
+    return t + '...';
+  }
+
+  // Columns. Identification columns that are switched off take no room; the athlete name column gets it instead,
+  // the same convention as the other PDFs.
+  var fixed = [26, 28, big ? 210 : 150, big ? 70 : 56];   // hip, bib, name, red cards
+  if (!useHip()) { fixed[2] += fixed[0]; fixed[0] = 0; }
+  if (!useBib()) { fixed[2] += fixed[1]; fixed[1] = 0; }
+  var fixedW = fixed[0] + fixed[1] + fixed[2] + fixed[3];
+  var xs = [M, M + fixed[0], M + fixed[0] + fixed[1], M + fixed[0] + fixed[1] + fixed[2]];
+  var xR = xs[3] + fixed[3], restW = PW - 2 * M - fixedW, colW = restW / 4;
+  var rxs = [xR, xR + colW, xR + colW * 2, xR + colW * 3];
+  var RLAB = ['Arrived', 'Released', 'In the zone', 'Status'];
+
+  // Rows: the same grouping and order as the tab -- waiting or serving first, then served, then disqualified before serving.
+  var groups = pzGroups(pzAthletes()), all = groups.todo.concat(groups.served).concat(groups.dq);
+  function statusOf(r){
+    if (r.st.served) return 'Served';
+    if (r.dq) return 'Disqualified before serving';
+    return r.st.state === 'wait' ? 'Waiting' : r.st.state === 'run' ? 'Serving' : r.st.state === 'time' ? 'Time is up' : r.st.state === 'rel' ? 'Released' : '';
+  }
+  var nWait = groups.todo.filter(function(r){ return r.st.state === 'wait'; }).length;
+  var nRun = groups.todo.filter(function(r){ return r.st.state === 'run' || r.st.state === 'time' || r.st.state === 'rel'; }).length;
+
+  // Header details: every Meet item that has a value, then the Penalty Zone's own setting and counts.
+  var items = [];
+  function addItem(l, v){ if (v !== '' && v != null) items.push({l:l, v:String(v)}); }
+  addItem('Race distance(s)', ev.distance);
+  addItem('Location', ev.location);
+  addItem('Course length', ev.courseLength);
+  addItem('Road course certification #', ev.courseCert);
+  addItem('Countdown time', pzTime() ? pzLabel(pzTime()) : 'Not chosen yet');
+  addItem('Sent to the Penalty Zone at', ev.pit + ' red card' + (ev.pit === 1 ? '' : 's'));
+  addItem('Waiting', nWait); addItem('Serving or released', nRun); addItem('Served', groups.served.length); addItem('Disqualified before serving', groups.dq.length);
+  function itemW(it){ setF(true, 8.5, PC.ink); var w = doc.getTextWidth(pdfSafe(it.l) + ': '); setF(false, 8.5, PC.muted); return w + doc.getTextWidth(pdfSafe(it.v)); }
+  var sepW; setF(false, 8.5, PC.muted); sepW = doc.getTextWidth('   ');
+  var infoLines = [], curLine = [], curW = 0;
+  items.forEach(function(it){
+    var maxW = PW - 2 * M, w = itemW(it);
+    if (w > maxW) { it = {l:it.l, v:fit(it.v, Math.max(40, maxW - itemW({l:it.l, v:''})))}; w = itemW(it); }
+    if (curLine.length && curW + sepW + w > maxW) { infoLines.push(curLine); curLine = []; curW = 0; }
+    curW += (curLine.length ? sepW : 0) + w; curLine.push(it);
+  });
+  if (curLine.length) infoLines.push(curLine);
+  var TITLE = 40 + 12 * Math.max(1, infoLines.length), HDR = 24, top = M + TITLE, bodyTop = top + HDR, RH = 20;
+  var perPage = Math.max(1, Math.floor((PH - M - bodyTop) / RH));
+  var pagesY = Math.max(1, Math.ceil(all.length / perPage));
+  var exported = pdfSafe(new Date().toLocaleString());
+
+  function drawTitle(){
+    setF(false, 8.5, PC.muted); left('Race Walk Officiating', M, M + 6);
+    setF(true, 17, PC.ink); var tt = 'Penalty Zone'; left(tt, M, M + 24);
+    if (inHeats()) { setF(true, 11, PC.muted); left(fit(raceLabel(S.raceId), PW - 2 * M - doc.getTextWidth(tt) - 190), M + doc.getTextWidth(tt) + 12, M + 24); }
+    if (evName) { setF(true, 14, PC.ink); doc.text(evName, PW - M, M + 10, {align:'right', baseline:'middle'}); }
+    if (ev.date) { setF(false, 10, PC.muted); doc.text(pdfSafe(fmtDate(ev.date)), PW - M, M + 24, {align:'right', baseline:'middle'}); }
+    infoLines.forEach(function(line, li){
+      var x = M, y = M + 41 + 12 * li;
+      line.forEach(function(it){
+        setF(true, 8.5, PC.ink); var lt = pdfSafe(it.l) + ': '; left(lt, x, y); x += doc.getTextWidth(lt);
+        setF(false, 8.5, PC.muted); left(pdfSafe(it.v), x, y); x += doc.getTextWidth(pdfSafe(it.v)) + sepW;
+      });
+    });
+    stroke(PC.strong, 0.8); doc.line(M, top - 4, PW - M, top - 4);
+  }
+  function drawHeader(){
+    var fl = ['Hip #', 'Bib #', 'Athlete name', 'Red cards'];
+    for (var k = 0; k < 4; k++) {
+      if (!fixed[k]) continue;
+      box(xs[k], top, fixed[k], HDR, PC.s2); setF(true, 7.5, PC.ink);
+      if (k === 2) left(fl[k], xs[k] + 4, top + HDR / 2); else mid(fl[k], xs[k] + fixed[k] / 2, top + HDR / 2);
+    }
+    for (var i = 0; i < 4; i++) { box(rxs[i], top, colW, HDR, PC.s2); setF(true, 7.5, PC.ink); mid(RLAB[i], rxs[i] + colW / 2, top + HDR / 2); }
+  }
+  function drawRow(r, y){
+    var a = r.a, c = r.c, cy = y + RH / 2, served = r.st.served, tint = served ? [235, 245, 236] : r.dq ? PC.redSoft : PC.white;
+    for (var k = 0; k < 4; k++) if (fixed[k]) box(xs[k], y, fixed[k], RH, tint);
+    if (r.dq) { fill(PC.red); doc.rect(xs[0], y, 3, RH, 'F'); }
+    if (fixed[0]) { setF(true, 8.5, PC.ink); mid(fit(a.hip, fixed[0] - 4), xs[0] + fixed[0] / 2, cy); }
+    if (fixed[1]) { setF(false, 8.5, PC.ink); mid(fit(a.bib, fixed[1] - 4), xs[1] + fixed[1] / 2, cy); }
+    setF(false, 8.5, PC.ink); left(fit(a.name, fixed[2] - 8), xs[2] + 4, cy);
+    setF(c > 0 ? true : false, c > 0 ? 11 : 9, c > 0 ? PC.ink : PC.muted); mid(String(c), xs[3] + fixed[3] / 2, cy);
+    var vals = [r.st.a ? pzClock(r.st.a) : '', r.st.r ? pzClock(r.st.r) : '', (r.st.a && r.st.r) ? pzDur(r.st.r - r.st.a) : '', statusOf(r)];
+    for (var i = 0; i < 4; i++) {
+      box(rxs[i], y, colW, RH, tint);
+      if (i === 3) { setF(true, 8, served ? [30, 110, 40] : r.dq ? PC.red : PC.ink); mid(fit(vals[i], colW - 6), rxs[i] + colW / 2, cy); }
+      else if (vals[i]) { setF(false, 8.5, PC.ink); mid(vals[i], rxs[i] + colW / 2, cy); }
+    }
+  }
+  function drawPage(chunk, pageNo, total){
+    drawTitle(); drawHeader();
+    var nRows = Math.max(1, chunk.length);
+    if (!chunk.length) {
+      box(M, bodyTop, PW - 2 * M, RH * 2, PC.white);
+      setF(false, 9, PC.muted); left('No athletes are in the Penalty Zone yet.', M + 8, bodyTop + RH);
+      nRows = 2;
+    } else chunk.forEach(function(r, i){ drawRow(r, bodyTop + i * RH); });
+    var bottom = bodyTop + nRows * RH, right = PW - M;
+    stroke(PC.ink, 1.2); for (var i = 0; i < 4; i++) doc.line(rxs[i], top, rxs[i], bottom);
+    doc.line(xR, top, xR, bottom); doc.line(M, top + HDR, right, top + HDR);
+    stroke(PC.strong, 1); doc.line(M, bottom, right, bottom); doc.line(M, top, M, bottom); doc.line(right, top, right, bottom);
+    setF(false, 7.5, PC.muted);
+    left('Exported ' + exported, M, PH - M + 14);
+    doc.text('Page ' + pageNo + ' of ' + total, PW - M, PH - M + 14, {align:'right', baseline:'middle'});
+  }
+  for (var pi = 0; pi < pagesY; pi++) {
+    if (pi > 0) doc.addPage();
+    drawPage(all.slice(pi * perPage, (pi + 1) * perPage), pi + 1, pagesY);
+  }
+  return doc;
+}
+
 async function exportPDF(kind, paper){
   if (!dl) return;
   var JS;
   try { JS = await ensurePDF(); }
   catch (err) { toast('The PDF tool could not load. Check the connection and try again.'); return; }
   var doc;
-  try { doc = buildPDF(JS, kind, paper); }
+  try { doc = kind === 'pz' ? buildPZPDF(JS, paper) : buildPDF(JS, kind, paper); }
   catch (err) { toast('Could not build the PDF.'); try { console.error(err); } catch (x) {} return; }
   var ev = S.event;
-  var fname = 'race-walk-' + (kind === 'rc' ? 'red-cards' : 'recorder') + '-' + (ev.name || 'meet').replace(/[^\w.-]+/g, '-') + (inHeats() ? '-' + raceLabel(S.raceId).replace(/[^\w.-]+/g, '-') : '') + (ev.date ? '-' + ev.date : '') + '.pdf';
+  var fname = 'race-walk-' + (kind === 'rc' ? 'red-cards' : kind === 'pz' ? 'penalty-zone' : 'recorder') + '-' + (ev.name || 'meet').replace(/[^\w.-]+/g, '-') + (inHeats() ? '-' + raceLabel(S.raceId).replace(/[^\w.-]+/g, '-') : '') + (ev.date ? '-' + ev.date : '') + '.pdf';
   try { await dl.save({filename:fname, data:doc.output('arraybuffer')}); toast('PDF ready.'); }
   catch (err) { if (!err || err.code !== 'declined') toast('Could not export the PDF in this view.'); }
 }
 function openPdfDialog(kind){
-  var isRC = kind === 'rc';
+  var isRC = kind === 'rc', isPZ = kind === 'pz';
   openDialog({
-    title:'Export ' + (isRC ? 'Red Cards' : 'Recorder') + ' as PDF',
-    body:'<p>Choose a page size. Both are landscape.</p>' +
+    title:'Export ' + (isRC ? 'Red Cards' : isPZ ? 'Penalty Zone' : 'Recorder') + ' as PDF',
+    body:'<p>Choose a page size. Both are landscape.' + (isPZ && inHeats() ? ' This exports the current race only; switch races to export another.' : '') + '</p>' +
       '<label class="opt"><input type="radio" name="pdfpaper" value="letter" checked><span><b>Letter, 8.5 &times; 11 in</b><br>' +
-        (isRC ? 'All active judges fit across one page.' : 'Judges are split across pages when there are more than four, with the athlete columns repeated on each.') + '</span></label>' +
+        (isPZ ? 'Fits comfortably for most meets.' : isRC ? 'All active judges fit across one page.' : 'Judges are split across pages when there are more than four, with the athlete columns repeated on each.') + '</span></label>' +
       '<label class="opt"><input type="radio" name="pdfpaper" value="tabloid"><span><b>Tabloid, 11 &times; 17 in</b><br>' +
-        (isRC ? 'Larger columns that are easier to read from a distance.' : 'All active judges on one page width, like the app.') + '</span></label>' +
+        (isPZ ? 'Larger columns that are easier to read from a distance.' : isRC ? 'Larger columns that are easier to read from a distance.' : 'All active judges on one page width, like the app.') + '</span></label>' +
       (isRC && (S.rcOnly || S.rcSort === 'cards') ? '<p>The PDF matches what the tab is showing now, including its sort and filter.</p>' : ''),
     ok:'Export PDF',
     onOk:function(){ var r = document.querySelector('input[name="pdfpaper"]:checked'); exportPDF(kind, r ? r.value : 'letter'); }
