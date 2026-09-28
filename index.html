@@ -6010,19 +6010,22 @@ function buildPZPDF(JS, paper){
     if (r.dq) return 'Disqualified before serving';
     return r.st.state === 'wait' ? 'Waiting' : r.st.state === 'run' ? 'Serving' : r.st.state === 'time' ? 'Time is up' : r.st.state === 'rel' ? 'Released' : '';
   }
-  var nWait = groups.todo.filter(function(r){ return r.st.state === 'wait'; }).length;
-  var nRun = groups.todo.filter(function(r){ return r.st.state === 'run' || r.st.state === 'time' || r.st.state === 'rel'; }).length;
 
   // Header details: every Meet item that has a value, then the Penalty Zone's own setting and counts.
   var items = [];
   function addItem(l, v){ if (v !== '' && v != null) items.push({l:l, v:String(v)}); }
   addItem('Race distance(s)', ev.distance);
   addItem('Location', ev.location);
-  addItem('Course length', ev.courseLength);
   addItem('Road course certification #', ev.courseCert);
-  addItem('Countdown time', pzTime() ? pzLabel(pzTime()) : 'Not chosen yet');
+  var durSet = {}; all.forEach(function(r){ if (r.st.d) durSet[r.st.d] = true; });
+  var durs = Object.keys(durSet).map(Number).sort(function(x, y){ return x - y; });
+  if (!durs.length) addItem('Countdown time', pzTime() ? pzLabel(pzTime()) : 'Not chosen yet');
+  else if (durs.length === 1) addItem('Countdown time', pzLabel(durs[0]));
+  else addItem('Countdown times used', durs.map(pzLabel).join(', '));
   addItem('Sent to the Penalty Zone at', ev.pit + ' red card' + (ev.pit === 1 ? '' : 's'));
-  addItem('Waiting', nWait); addItem('Serving or released', nRun); addItem('Served', groups.served.length); addItem('Disqualified before serving', groups.dq.length);
+  var pzmJ = ev.judges[PZM - 1], pzmOn = isActive(PZM);
+  addItem('Penalty Zone Manager', !pzmOn ? 'Not turned on for this race' : pzmJ.name ? pzmJ.name + (pzmJ.cert ? ' (' + pzmJ.cert + ')' : '') : 'Name and cert not set');
+  addItem('Served', groups.served.length); addItem('Disqualified before serving', groups.dq.length);
   function itemW(it){ setF(true, 8.5, PC.ink); var w = doc.getTextWidth(pdfSafe(it.l) + ': '); setF(false, 8.5, PC.muted); return w + doc.getTextWidth(pdfSafe(it.v)); }
   var sepW; setF(false, 8.5, PC.muted); sepW = doc.getTextWidth('   ');
   var infoLines = [], curLine = [], curW = 0;
@@ -6041,7 +6044,7 @@ function buildPZPDF(JS, paper){
   function drawTitle(){
     setF(false, 8.5, PC.muted); left('Race Walk Officiating', M, M + 6);
     setF(true, 17, PC.ink); var tt = 'Penalty Zone'; left(tt, M, M + 24);
-    if (inHeats()) { setF(true, 11, PC.muted); left(fit(raceLabel(S.raceId), PW - 2 * M - doc.getTextWidth(tt) - 190), M + doc.getTextWidth(tt) + 12, M + 24); }
+    if (inHeats()) { setF(true, 11, PC.muted); left(fit(raceLabel(S.raceId), PW - 2 * M - doc.getTextWidth(tt) - 198), M + doc.getTextWidth(tt) + 20, M + 24); }
     if (evName) { setF(true, 14, PC.ink); doc.text(evName, PW - M, M + 10, {align:'right', baseline:'middle'}); }
     if (ev.date) { setF(false, 10, PC.muted); doc.text(pdfSafe(fmtDate(ev.date)), PW - M, M + 24, {align:'right', baseline:'middle'}); }
     infoLines.forEach(function(line, li){
