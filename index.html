@@ -5652,6 +5652,33 @@ function pdfSafe(v){
   }).join('');
 }
 
+// Rules reference printed at the bottom of every page of the Recorder, Red Cards and Penalty Zone PDFs.
+var RULES_REF = [['230.3C', '3rd Red Card'], ['230.3F', 'Last 100m'], ['230.3J', '4th Red Card'], ['230.3J', 'PZ Time Added After Race'], ['145.2', 'Unsporting Conduct']];
+function rulesRefLayout(doc, PW, M){
+  var maxW = PW - 2 * M, gap = 22, lines = [], cur = [], curW = 0;
+  RULES_REF.forEach(function(r){
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); var cw = doc.getTextWidth(r[0] + ' - ');
+    doc.setFont('helvetica', 'normal'); var w = cw + doc.getTextWidth(r[1]);
+    if (cur.length && curW + gap + w > maxW) { lines.push(cur); cur = []; curW = 0; }
+    curW += (cur.length ? gap : 0) + w; cur.push({code:r[0], text:r[1], cw:cw, w:w});
+  });
+  if (cur.length) lines.push(cur);
+  return {lines:lines, gap:gap, h:8 + 11 + 10 * lines.length + 4};
+}
+function drawRulesRef(doc, lay, PW, PH, M){
+  var y0 = PH - M - lay.h;
+  doc.setDrawColor(PC.strong[0], PC.strong[1], PC.strong[2]); doc.setLineWidth(0.5); doc.line(M, y0, PW - M, y0);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(PC.ink[0], PC.ink[1], PC.ink[2]);
+  doc.text('Rules related to disqualification', M, y0 + 10, {baseline:'middle'});
+  lay.lines.forEach(function(line, li){
+    var x = M, y = y0 + 22 + 10 * li;
+    line.forEach(function(it){
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(PC.ink[0], PC.ink[1], PC.ink[2]); doc.text(it.code + ' - ', x, y, {baseline:'middle'});
+      doc.setFont('helvetica', 'normal'); doc.setTextColor(PC.muted[0], PC.muted[1], PC.muted[2]); doc.text(it.text, x + it.cw, y, {baseline:'middle'});
+      x += it.w + lay.gap;
+    });
+  });
+}
 function buildPDF(JS, kind, paper){
   var ev = S.event, isRC = kind === 'rc', big = paper === 'tabloid';
   var PW = big ? 1224 : 792, PH = big ? 792 : 612, M = 28;
@@ -5736,7 +5763,8 @@ function buildPDF(JS, kind, paper){
   if (curLine.length) infoLines.push(curLine);
   var TITLE = 40 + 12 * Math.max(1, infoLines.length), H = [17, twoN ? 23 : 17, twoC ? 21 : 15, hl >= 3 ? 8 + hl * 8 : 24], HT = H[0] + H[1] + H[2] + H[3], RH = 17;
   var top = M + TITLE, bodyTop = top + HT;
-  var perPage = Math.max(1, Math.floor((PH - M - bodyTop) / RH));
+  var rulesLay = rulesRefLayout(doc, PW, M);
+  var perPage = Math.max(1, Math.floor((PH - M - rulesLay.h - bodyTop) / RH));
   var pagesY = Math.max(1, Math.ceil(rows.length / perPage));
   var sets = groups.length, total = sets * pagesY, page = 0;
   var xs = [M, M + fixed[0], M + fixed[0] + fixed[1], M + fixed[0] + fixed[1] + fixed[2]];
@@ -5955,6 +5983,8 @@ function buildPDF(JS, kind, paper){
     stroke(PC.ink, 1.2); doc.line(xJ, top, xJ, bottom); doc.line(M, top + HT, right, top + HT);
     stroke(PC.strong, 1); doc.line(M, bottom, right, bottom);
     setF(false, 7.5, PC.muted);
+    drawRulesRef(doc, rulesLay, PW, PH, M);
+    setF(false, 7.5, PC.muted);
     left('Exported ' + exported, M, PH - M + 14);
     mid('Symbols: > bent knee   ~ loss of contact', PW / 2, PH - M + 14);
     doc.text('Page ' + pageNo + ' of ' + total, PW - M, PH - M + 14, {align:'right', baseline:'middle'});
@@ -6037,7 +6067,8 @@ function buildPZPDF(JS, paper){
   });
   if (curLine.length) infoLines.push(curLine);
   var TITLE = 40 + 12 * Math.max(1, infoLines.length), HDR = 24, top = M + TITLE, bodyTop = top + HDR, RH = 20;
-  var perPage = Math.max(1, Math.floor((PH - M - bodyTop) / RH));
+  var rulesLay = rulesRefLayout(doc, PW, M);
+  var perPage = Math.max(1, Math.floor((PH - M - rulesLay.h - bodyTop) / RH));
   var pagesY = Math.max(1, Math.ceil(all.length / perPage));
   var exported = pdfSafe(new Date().toLocaleString());
 
@@ -6092,6 +6123,7 @@ function buildPZPDF(JS, paper){
     stroke(PC.ink, 1.2); for (var i = 0; i < 4; i++) doc.line(rxs[i], top, rxs[i], bottom);
     doc.line(xR, top, xR, bottom); doc.line(M, top + HDR, right, top + HDR);
     stroke(PC.strong, 1); doc.line(M, bottom, right, bottom); doc.line(M, top, M, bottom); doc.line(right, top, right, bottom);
+    drawRulesRef(doc, rulesLay, PW, PH, M);
     setF(false, 7.5, PC.muted);
     left('Exported ' + exported, M, PH - M + 14);
     doc.text('Page ' + pageNo + ' of ' + total, PW - M, PH - M + 14, {align:'right', baseline:'middle'});
