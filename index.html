@@ -5,7 +5,6 @@
     <title>walkjudge.com — Coming Soon</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        /* Page base */
         body {
             margin: 0;
             padding: 0;
@@ -15,30 +14,18 @@
             overflow: hidden;
         }
 
-        /* Animated track stripes background */
-        .stripes {
+        /* Semi-transparent race walk silhouettes background */
+        .silhouettes {
             position: fixed;
             top: 0;
             left: 0;
-            width: 200%;
+            width: 100%;
             height: 100%;
-            background: repeating-linear-gradient(
-                90deg,
-                rgba(255, 0, 0, 0.25) 0px,
-                rgba(255, 0, 0, 0.25) 40px,
-                transparent 40px,
-                transparent 80px
-            );
-            animation: slide 6s linear infinite;
+            background: url("racewalk-silhouettes.png") center/cover no-repeat;
+            opacity: 0.22; /* subtle, professional */
             z-index: -1;
         }
 
-        @keyframes slide {
-            from { transform: translateX(0); }
-            to { transform: translateX(-50%); }
-        }
-
-        /* Centered content */
         .container {
             height: 100vh;
             display: flex;
@@ -49,7 +36,6 @@
             padding: 20px;
         }
 
-        /* Logo */
         .logo {
             width: 320px;
             max-width: 80%;
@@ -63,7 +49,6 @@
             100% { transform: scale(1); }
         }
 
-        /* Title */
         h1 {
             font-size: 2.8rem;
             margin-top: 25px;
@@ -78,7 +63,6 @@
             100% { opacity: 1; }
         }
 
-        /* Tagline */
         .tagline {
             margin-top: 15px;
             font-size: 1.2rem;
@@ -87,7 +71,6 @@
             opacity: 0;
         }
 
-        /* Pulse dot */
         .pulse {
             margin-top: 40px;
             width: 18px;
@@ -106,10 +89,9 @@
 </head>
 <body>
 
-<div class="stripes"></div>
+<div class="silhouettes"></div>
 
 <div class="container">
-    <!-- Use your rebuilt transparent logo file here -->
     <img src="race-walk-officiating-logo.png" alt="Race Walk Officiating Logo" class="logo">
 
     <h1>walkjudge.com</h1>
