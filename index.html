@@ -22,7 +22,7 @@
             width: 100%;
             height: 100%;
             background: url("racewalk-silhouettes.png") center/cover no-repeat;
-            opacity: 0.22; /* subtle, professional */
+            opacity: 0.22;
             z-index: -1;
         }
 
@@ -36,17 +36,23 @@
             padding: 20px;
         }
 
+        /* Logo animation: pop in, then expand to 3x and stay */
         .logo {
             width: 320px;
             max-width: 80%;
-            animation: popin 1.2s ease-out forwards;
+            animation: popin 1.2s ease-out forwards, grow 2.5s ease-out 1.4s forwards;
             opacity: 0;
         }
 
         @keyframes popin {
             0%   { transform: scale(0.6); opacity: 0; }
             60%  { transform: scale(1.08); opacity: 1; }
-            100% { transform: scale(1); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        @keyframes grow {
+            0%   { transform: scale(1); }
+            100% { transform: scale(3); }
         }
 
         h1 {
