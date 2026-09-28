@@ -6043,8 +6043,8 @@ function buildPZPDF(JS, paper){
 
   function drawTitle(){
     setF(false, 8.5, PC.muted); left('Race Walk Officiating', M, M + 6);
-    setF(true, 17, PC.ink); var tt = 'Penalty Zone'; left(tt, M, M + 24);
-    if (inHeats()) { setF(true, 11, PC.muted); left(fit(raceLabel(S.raceId), PW - 2 * M - doc.getTextWidth(tt) - 198), M + doc.getTextWidth(tt) + 20, M + 24); }
+    setF(true, 17, PC.ink); var tt = 'Penalty Zone', ttw = doc.getTextWidth(tt); left(tt, M, M + 24);   // measured at the title's own size, before the smaller race name changes the font
+    if (inHeats()) { setF(true, 11, PC.muted); left(fit(raceLabel(S.raceId), PW - 2 * M - ttw - 24 - 190), M + ttw + 24, M + 24); }
     if (evName) { setF(true, 14, PC.ink); doc.text(evName, PW - M, M + 10, {align:'right', baseline:'middle'}); }
     if (ev.date) { setF(false, 10, PC.muted); doc.text(pdfSafe(fmtDate(ev.date)), PW - M, M + 24, {align:'right', baseline:'middle'}); }
     infoLines.forEach(function(line, li){
