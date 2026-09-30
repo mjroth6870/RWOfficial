@@ -5,6 +5,7 @@
     <title>walkjudge.com — Coming Soon</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
+        /* Base layout */
         body {
             margin: 0;
             padding: 0;
@@ -57,7 +58,7 @@
         }
 
         h1 {
-            font-size: 2.8rem;
+            font-size: 2.4rem;
             margin-top: 25px;
             letter-spacing: 2px;
             text-transform: uppercase;
@@ -72,7 +73,7 @@
 
         .tagline {
             margin-top: 15px;
-            font-size: 1.2rem;
+            font-size: 1.1rem;
             color: #ccc;
             animation: fadein 2.8s ease-out forwards;
             opacity: 0;
@@ -92,6 +93,46 @@
             50%  { transform: scale(1.6); opacity: 0.4; }
             100% { transform: scale(1);   opacity: 0.8; }
         }
+
+        /* Contact link styling + fade-in */
+        .contact {
+            margin-top: 60px;
+            font-size: 1rem;
+            opacity: 0;
+            animation: contactfade 2s ease-out 4.2s forwards;
+        }
+
+        @keyframes contactfade {
+            0%   { opacity: 0; transform: translateY(20px); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
+
+        .contact a {
+            color: #fff;
+            text-decoration: none;
+            border: 2px solid #e60000;
+            padding: 10px 20px;
+            border-radius: 6px;
+            transition: background 0.3s ease, color 0.3s ease;
+        }
+
+        .contact a:hover {
+            background: #e60000;
+            color: #fff;
+        }
+
+        /* Mobile responsiveness */
+        @media (max-width: 768px) {
+            h1 { font-size: 1.8rem; }
+            .tagline { font-size: 1rem; }
+            .logo { width: 240px; }
+        }
+
+        @media (max-width: 480px) {
+            h1 { font-size: 1.5rem; }
+            .tagline { font-size: 0.9rem; }
+            .logo { width: 200px; }
+        }
     </style>
 </head>
 <body>
@@ -99,14 +140,9 @@
 <div class="silhouettes"></div>
 
 <div class="container">
-    <!-- Use the new bold-outlined logo here -->
     <img src="race-walk-officiating-logo.png" alt="Race Walk Officiating Logo" class="logo">
 
     <h1>walkjudge.com</h1>
     <div class="tagline">A new era of race walk officiating is on the way.</div>
 
-    <div class="pulse"></div>
-</div>
-
-</body>
-</html>
+    <div class="pulse">
