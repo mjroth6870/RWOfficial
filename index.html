@@ -14,6 +14,7 @@
             overflow: hidden;
         }
 
+        /* Silhouettes background with fade-in + drift */
         .silhouettes {
             position: fixed;
             top: 0;
@@ -21,8 +22,21 @@
             width: 100%;
             height: 100%;
             background: url("racewalk-silhouettes.png") center/cover no-repeat;
-            opacity: 0.22;
+            opacity: 0;
+            animation: bgfade 4s ease-out 1.4s forwards,
+                       drift 18s linear infinite;
             z-index: -1;
+        }
+
+        @keyframes bgfade {
+            0%   { opacity: 0; }
+            100% { opacity: 0.22; }
+        }
+
+        @keyframes drift {
+            0%   { background-position: center; }
+            50%  { background-position: center 20px; }
+            100% { background-position: center; }
         }
 
         .container {
@@ -35,11 +49,13 @@
             padding: 20px;
         }
 
+        /* Logo animation + glow at final state */
         .logo {
             width: 320px;
             max-width: 80%;
             animation: popin 1.2s ease-out forwards,
-                       grow 2.5s ease-out 1.4s forwards;
+                       grow 2.5s ease-out 1.4s forwards,
+                       glow 2.5s ease-out 1.4s forwards;
             opacity: 0;
         }
 
@@ -54,13 +70,20 @@
             100% { transform: scale(3); }
         }
 
+        @keyframes glow {
+            0%   { filter: drop-shadow(0 0 0px #e60000); }
+            100% { filter: drop-shadow(0 0 22px #e60000); }
+        }
+
+        /* Title fades out as logo grows */
         h1 {
             font-size: 2.4rem;
             margin-top: 25px;
             letter-spacing: 2px;
             text-transform: uppercase;
-            animation: fadein 2s ease-out forwards;
-            opacity: 0;
+            opacity: 1;
+            animation: fadein 2s ease-out forwards,
+                       fadeout 1.2s ease-out 1.4s forwards;
         }
 
         @keyframes fadein {
@@ -68,12 +91,19 @@
             100% { opacity: 1; }
         }
 
+        @keyframes fadeout {
+            0%   { opacity: 1; }
+            100% { opacity: 0; }
+        }
+
+        /* Tagline fades out as logo grows */
         .tagline {
             margin-top: 15px;
             font-size: 1.1rem;
             color: #ccc;
-            animation: fadein 2.8s ease-out forwards;
-            opacity: 0;
+            opacity: 1;
+            animation: fadein 2.8s ease-out forwards,
+                       fadeout 1.2s ease-out 1.4s forwards;
         }
 
         .pulse {
@@ -82,7 +112,8 @@
             height: 18px;
             background: #e60000;
             border-radius: 50%;
-            animation: pulse 1.4s infinite ease-in-out;
+            animation: pulse 1.4s infinite ease-in-out,
+                       fadeout 1.2s ease-out 1.4s forwards;
         }
 
         @keyframes pulse {
@@ -96,7 +127,7 @@
             margin-top: 60px;
             font-size: 1rem;
             opacity: 0;
-            animation: contactfade 1.4s ease-out 3.2s forwards;
+            animation: contactfade 1.2s ease-out 3s forwards;
         }
 
         @keyframes contactfade {
