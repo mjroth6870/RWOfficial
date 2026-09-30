@@ -59,10 +59,12 @@ button[disabled],input[disabled]{cursor:not-allowed}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 
 /* ---------- Top bar ---------- */
-.top{display:flex;align-items:center;gap:8px 20px;flex-wrap:wrap;padding:14px 16px 6px}
+.top{display:flex;flex-direction:column;gap:2px;padding:14px 16px 6px}
+.top-row1{display:flex;align-items:center;justify-content:space-between;gap:8px 20px;flex-wrap:wrap}
 .brand{display:flex;align-items:center;gap:10px}
+.brand-by{font:400 13px/1 var(--sans);color:var(--muted);letter-spacing:0;white-space:nowrap}
 .brand h1{margin:0;font:700 26px/1 var(--cond);letter-spacing:.01em}
-.evline{display:flex;align-items:center;flex-wrap:wrap;gap:4px 14px;flex:1;min-width:160px}
+.evline{display:flex;align-items:center;flex-wrap:wrap;gap:4px 14px;min-height:20px}
 .ev-name{font:600 20px/1.1 var(--cond)}
 .ev-date{color:var(--muted)}
 .ev-none{color:var(--muted);font-size:15px}
@@ -639,18 +641,20 @@ main{min-width:0}
 <body>
 <div id="app">
   <header class="top">
-    <div class="brand">
-      <svg class="logo" viewBox="4 -2 212 172" width="46" height="37" aria-hidden="true">
-        <circle cx="56" cy="50" r="50" fill="var(--yellow)" stroke="var(--ink)" stroke-width="2.2"/>
-        <path d="M 28 20 H 87 V 37.5 H 45.5 V 80 H 28 Z" fill="var(--ink)"/>
-        <circle cx="164" cy="50" r="50" fill="var(--yellow)" stroke="var(--ink)" stroke-width="2.2"/>
-        <path d="M 131 47 C 137 28 150 20 158 27 C 166 34 169 54 177 60 C 185 66 193 61 199 49" fill="none" stroke="var(--ink)" stroke-width="15.5"/>
-        <circle cx="110" cy="118" r="50" fill="var(--red)" stroke="var(--ink)" stroke-width="2.2"/>
-      </svg>
-      <h1>Race Walk Officiating</h1>
+    <div class="top-row1">
+      <div class="brand">
+        <svg class="logo" viewBox="4 -2 212 172" width="46" height="37" aria-hidden="true">
+          <circle cx="56" cy="50" r="50" fill="var(--yellow)" stroke="var(--ink)" stroke-width="2.2"/>
+          <path d="M 28 20 H 87 V 37.5 H 45.5 V 80 H 28 Z" fill="var(--ink)"/>
+          <circle cx="164" cy="50" r="50" fill="var(--yellow)" stroke="var(--ink)" stroke-width="2.2"/>
+          <path d="M 131 47 C 137 28 150 20 158 27 C 166 34 169 54 177 60 C 185 66 193 61 199 49" fill="none" stroke="var(--ink)" stroke-width="15.5"/>
+          <circle cx="110" cy="118" r="50" fill="var(--red)" stroke="var(--ink)" stroke-width="2.2"/>
+        </svg>
+        <h1>Race Walk Officiating <span class="brand-by">by WalkJudge.com</span></h1>
+      </div>
+      <div id="sync" role="status" aria-live="polite"></div>
     </div>
     <div class="evline" id="evline"></div>
-    <div id="sync" role="status" aria-live="polite"></div>
   </header>
   <nav class="tabs" id="nav" role="tablist" aria-label="Sections"></nav>
   <div class="racebar noprint" id="racebar"></div>
@@ -4899,6 +4903,7 @@ function howtoHTML(){
       '<li><b>Will having many judges recording at once slow the app down or cause errors?</b> No. Marking a paddle or card does not save the instant you tap it &mdash; it waits a fraction of a second in case you tap something else, then saves once, so quick, repeated taps do not flood the connection. The number of judges a race walk meet actually uses is well within what this comfortably handles.</li>' +
       '<li><b>What happens if my connection drops while I&rsquo;m recording?</b> The app retries automatically a couple of times over a few seconds. If it is still failing after that, it tells you to check your connection and try again &mdash; it does not keep retrying by itself once you are back online, so if you see that message, touch the entry again once you have a signal.</li>' +
       '<li><b>What if the same judge&rsquo;s code ends up open on two phones at once?</b> Each save replaces that judge&rsquo;s whole sheet, so the later save can overwrite entries the other phone made. Only one device should record for a given position at a time. If the app notices this happening during an open race, it warns both devices. Penalty Zone is the one exception: more than one device there is expected, so it is never warned about.</li>' +
+      '<li><b>Which browser should I use?</b> WalkJudge.com is designed to display and operate properly in Google Chrome. Using the app in any other browser may result in behavior that is not supported or tested to operate optimally.</li>' +
     '</ul></section>' +
   '</div>';
 }
