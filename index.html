@@ -5,7 +5,6 @@
     <title>walkjudge.com — Coming Soon</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        /* Base layout */
         body {
             margin: 0;
             padding: 0;
@@ -15,7 +14,6 @@
             overflow: hidden;
         }
 
-        /* Semi-transparent race walk silhouettes background */
         .silhouettes {
             position: fixed;
             top: 0;
@@ -37,7 +35,6 @@
             padding: 20px;
         }
 
-        /* Logo animation: pop in, then expand to 3x and stay */
         .logo {
             width: 320px;
             max-width: 80%;
@@ -94,12 +91,12 @@
             100% { transform: scale(1);   opacity: 0.8; }
         }
 
-        /* Contact link styling + fade-in */
+        /* Contact button with faster fade-in */
         .contact {
             margin-top: 60px;
             font-size: 1rem;
             opacity: 0;
-            animation: contactfade 2s ease-out 4.2s forwards;
+            animation: contactfade 1.4s ease-out 3.2s forwards;
         }
 
         @keyframes contactfade {
@@ -132,6 +129,13 @@
             h1 { font-size: 1.5rem; }
             .tagline { font-size: 0.9rem; }
             .logo { width: 200px; }
+
+            /* 2× larger Contact Us button on mobile */
+            .contact a {
+                font-size: 1.4rem;
+                padding: 18px 32px;
+                border-width: 3px;
+            }
         }
     </style>
 </head>
