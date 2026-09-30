@@ -3,9 +3,12 @@
 `index.html` is the whole app. It is the same file as the Claude-hosted copy. Inside Claude it uses Claude's own
 live data and sign-in; anywhere else it uses your Firebase project (`rwofficial-d9330`). Both copies run side by side.
 
-## Copyright
+## Copyright and usage terms
 
-Copyright © 2020–2026 Michael J. Roth. All rights reserved. See `LICENSE`. (Update the end year every January 1.)
+Copyright © 2020–2026 Michael J. Roth. All rights reserved. This app, its source code, and this repository's other
+files are not to be copied, modified, redistributed, sublicensed, or reused, in whole or in part, without prior
+written permission from the copyright holder — including running your own copy of it under a different name or
+domain. See `LICENSE` for the full terms. (Update the end year every January 1.)
 
 ## What is here
 - `index.html`: the app
