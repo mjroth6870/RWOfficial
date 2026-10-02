@@ -4844,6 +4844,7 @@ function howtoHTML(){
     '<section class="rule"><h3>Recorder<small>Recorder tab</small></h3><ul>' +
       '<li>Enter athlete information on the Recorder tab only. It fills in every other tab.</li>' +
       '<li>Every athlete needs a name and the numbers chosen under Athlete identification on the Setup tab (hip/lane # and/or bib #).</li>' +
+      '<li>Paste athlete list, beside Add athlete, also accepts a start list copied from a results website. With a header row, its columns are matched by name rather than by position &mdash; Lane counts the same as Hip, Bib is kept if the website has it, and other columns such as team or seed time are ignored. In a heats meet, it adds to whichever race is currently open, so switch races first to bring in another.</li>' +
       '<li>Use Export PDF or Export CSV on the Recorder and Red Cards tabs, or Export PDF on the Penalty Zone tab, to keep a copy of the race. The Red cards column, and the Status column in the CSV, mark athletes PZ (penalty served) and DQ. In a heats meet, each export covers the race currently open; switch races to export another.</li>' +
     '</ul></section>' +
 
@@ -5506,33 +5507,66 @@ function athHasEntries(id){
   for (var n = 1; n <= NJ; n++) { var e = S.entries[n][id]; if (e && (e.y1 || e.y2 || e.rc || e.rt || e.dn || e.lc || e.lt || e.pza || e.pzr || e.pzv)) return true; }
   return false;
 }
+// Splits one pasted line into cells: tabs first (what spreadsheets and browsers normally copy), then runs of two or
+// more spaces (common when a results website's table copies as plain, column-aligned text), then commas as a last
+// resort. Whichever of these actually produces more than one cell is used.
+function splitPasteLine(line){
+  if (line.indexOf('\t') >= 0) return line.split('\t').map(function(p){ return p.trim(); });
+  if (/ {2,}/.test(line.trim())) { var bySpace = line.trim().split(/ {2,}/); if (bySpace.length > 1) return bySpace.map(function(p){ return p.trim(); }); }
+  return line.split(',').map(function(p){ return p.trim(); });
+}
+// Column headers a results website might use, matched case-insensitively against a whole cell. Lane counts the same
+// as Hip -- this app's own Setup page already calls that field "hip/lane #" for the same reason. Any other column
+// (team, seed time, age, and so on) is simply not recognized, so it is ignored rather than breaking the import.
+var PASTE_HDR = {hip:['hip', 'hip#', 'hip #', 'lane', 'lane#', 'lane #', 'pos', 'position'], bib:['bib', 'bib#', 'bib #', 'no', 'no.', 'number', 'athlete no', 'athlete no.', 'athlete number', 'uniform #'], name:['name', 'athlete', 'athlete name', 'competitor', 'competitor name']};
+// Looks at one split line and says which column index, if any, is Hip/Lane, Bib, and Name -- or null if this does
+// not look like a header row at all (an ordinary data row does not literally read "name" or "lane" in any cell).
+function detectPasteHeader(cells){
+  var map = {hip:-1, bib:-1, name:-1}, hit = false;
+  cells.forEach(function(c, i){
+    var low = c.toLowerCase().trim();
+    ['hip', 'bib', 'name'].forEach(function(k){ if (map[k] === -1 && PASTE_HDR[k].indexOf(low) !== -1) { map[k] = i; hit = true; } });
+  });
+  return hit ? map : null;
+}
 function openPaste(){
   var hip = useHip(), bib = useBib();
   var fmt = idNouns().join(', ') + ', then the name';
   var ex1 = (hip ? '1&#9;' : '') + (bib ? '201&#9;' : '') + 'Athlete Name', ex2 = (hip ? '2&#9;' : '') + (bib ? '202&#9;' : '') + 'Athlete Name';
   openDialog({
     title:'Paste athlete list',
-    body:'<p>One athlete per line: ' + fmt + '. Separate with tabs or commas. Copying ' + (idCount() + 1 === 3 ? 'three columns' : 'two columns') + ' from a spreadsheet works.</p><textarea id="paste-ta" placeholder="' + ex1 + '&#10;' + ex2 + '" aria-label="Athlete list"></textarea>',
+    body:'<p>One athlete per line: ' + fmt + '. Separate with tabs or commas. Copying ' + (idCount() + 1 === 3 ? 'three columns' : 'two columns') + ' from a spreadsheet works.</p>' +
+      '<p>You can also paste a start list copied from a live results website. If the first line is a header, its columns are matched by name: Lane counts the same as Hip, Bib is kept separately when present, and other columns (team, seed time, and so on) are ignored.' + (inHeats() ? ' This adds to the race currently open; switch races first to bring in another.' : '') + '</p>' +
+      '<textarea id="paste-ta" placeholder="' + ex1 + '&#10;' + ex2 + '" aria-label="Athlete list"></textarea>',
     ok:'Add athletes',
     onOk:function(){
-      var text = $('#paste-ta').value, added = 0, skipped = 0, need = idCount();
+      var text = $('#paste-ta').value, added = 0, skipped = 0, need = idCount(), hdr = null, first = true;
       text.split(/\r?\n/).forEach(function(line){
         if (!line.trim()) return;
-        var parts = line.indexOf('\t') >= 0 ? line.split('\t') : line.split(',');
-        parts = parts.map(function(p){ return p.trim(); });
-        if (/^(hip|lane|bib)/i.test(parts[0])) return;
-        var i = 0, v = {hip:'', bib:''}, ok = parts.length >= need + 1;
-        if (ok && hip) { v.hip = parts[i++]; ok = !!v.hip; }
-        if (ok && bib) { v.bib = parts[i++]; ok = !!v.bib; }
-        var nm = ok ? parts.slice(i).join(', ') : '';
-        if (!ok || !nm) { skipped++; return; }
+        var parts = splitPasteLine(line);
+        if (first) { first = false; hdr = detectPasteHeader(parts); if (hdr) return; }
+        if (!hdr && /^(hip|lane|bib)/i.test(parts[0])) return;
+        var v = {hip:'', bib:''}, nm = '', ok;
+        if (hdr) {
+          if (hdr.hip !== -1 && parts[hdr.hip]) v.hip = parts[hdr.hip];
+          if (hdr.bib !== -1 && parts[hdr.bib]) v.bib = parts[hdr.bib];
+          nm = hdr.name !== -1 ? (parts[hdr.name] || '') : '';
+          ok = !!(v.hip || v.bib) && !!nm;
+        } else {
+          var i = 0; ok = parts.length >= need + 1;
+          if (ok && hip) { v.hip = parts[i++]; ok = !!v.hip; }
+          if (ok && bib) { v.bib = parts[i++]; ok = !!v.bib; }
+          nm = ok ? parts.slice(i).join(', ') : '';
+          ok = ok && !!nm;
+        }
+        if (!ok) { skipped++; return; }
         v.name = nm;
         addAthlete(false, v);
         added++;
       });
       if (!added && !skipped) { toast('Nothing to add. Paste at least one line.'); return false; }
       render();
-      toast(added + (added === 1 ? ' athlete added' : ' athletes added') + (skipped ? '. ' + skipped + (skipped === 1 ? ' line' : ' lines') + ' skipped (each needs ' + orJoin(idNouns()).replace(' or ', ' and ') + ' and a name).' : '.'));
+      toast(added + (added === 1 ? ' athlete added' : ' athletes added') + (skipped ? '. ' + skipped + (skipped === 1 ? ' line' : ' lines') + ' skipped (each needs a hip/lane # or bib #, and a name).' : '.'));
     }
   });
 }
