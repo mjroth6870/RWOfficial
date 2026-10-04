@@ -4598,7 +4598,19 @@ function pzTick(){
 }
 setInterval(pzTick, 250);
 function pzRelease(aid, ms){ var e = ent(PZM, aid); e.pzr = String(ms); e.pzv = '1'; queueEntries(PZM, 60); render(); }
+// Once a race is closed, Arrived, Released and Penalty Served can no longer be removed (though a time can still be
+// corrected to a different one) -- that stays available to a race that is open, or not yet started.
+function pzLocked(){ return raceStatus() === 'closed'; }
+// If a refused clear was typed into a time box (rather than clicked on the stamp button), nothing in the app's own
+// state changed, so a plain render() will not touch that input -- the render-skip optimization that avoids
+// needless DOM work treats the unchanged markup as nothing to redraw. Left alone, the box would show blank even
+// though the stored time is intact. Resetting it directly here is what a real re-render would have shown anyway.
+function pzResetBox(aid, k){
+  var el = $('.pz-in[data-aid="' + aid + '"][data-k="' + k + '"]'); if (!el) return;
+  var v = ent(PZM, aid)[k === 'a' ? 'pza' : 'pzr']; el.value = v ? pzClock(v) : '';
+}
 function pzClearArrival(aid){
+  if (pzLocked()) { toast('The race is closed, so this cannot be cleared. Reopen the race to make corrections.'); pzResetBox(aid, 'a'); render(); return; }
   var e = ent(PZM, aid), a = findAth(aid);
   var clear = function(){ e.pza = ''; e.pzd = ''; e.pzr = ''; e.pzv = ''; queueEntries(PZM, 60); render(); };
   if (e.pzr || e.pzv) confirmDlg('Clear the arrival time?', 'This also clears the release time and Penalty Served for ' + esc(a ? athLabel(a) : 'this athlete') + '.', 'Clear', clear); else clear();
@@ -4614,8 +4626,10 @@ function pzTyped(t){
     if (!pzTime() && !e.pzd) { toast('Choose a penalty time first.'); render(); return; }
     e.pza = String(ms); if (!e.pzd) e.pzd = String(pzTime());
     if (e.pzr && +e.pzr < ms) { e.pzr = ''; e.pzv = ''; }
-  } else if (!ms) { e.pzr = ''; e.pzv = ''; }
-  else {
+  } else if (!ms) {
+    if (pzLocked()) { toast('The race is closed, so this cannot be cleared. Reopen the race to make corrections.'); pzResetBox(aid, 'r'); render(); return; }
+    e.pzr = ''; e.pzv = '';
+  } else {
     if (!e.pza) { toast('Record the arrival first.'); render(); return; }
     if (ms < +e.pza) { toast('The release cannot be before the arrival.'); render(); return; }
     e.pzr = String(ms); e.pzv = '1';
@@ -4625,8 +4639,9 @@ function pzTyped(t){
 // One Arrived or Released box: the time as HH:MM:SS, with the clock button that becomes a clear button once a time is set.
 function pzTimeBox(r, k, val, canStart, sel){
   var st = r.st, lab = k === 'a' ? 'Arrived' : 'Released', ro_ = roEnt(), dis, why;
-  if (k === 'a') { dis = ro_ || (!val && (r.dq || !sel || !canStart)); why = val ? 'Clear the arrival time' : r.dq ? 'This athlete is disqualified.' : !sel ? 'Choose a penalty time first.' : !canStart ? 'Arrivals can be recorded once the race is open.' : 'Use the current time as the arrival time and start the countdown'; }
-  else { dis = ro_ || (!val && !st.a); why = val ? 'Clear the release time' : !st.a ? 'Record the arrival first.' : 'Release the athlete now'; }
+  var locked = val && pzLocked();
+  if (k === 'a') { dis = ro_ || locked || (!val && (r.dq || !sel || !canStart)); why = locked ? 'The race is closed, so this cannot be cleared.' : val ? 'Clear the arrival time' : r.dq ? 'This athlete is disqualified.' : !sel ? 'Choose a penalty time first.' : !canStart ? 'Arrivals can be recorded once the race is open.' : 'Use the current time as the arrival time and start the countdown'; }
+  else { dis = ro_ || locked || (!val && !st.a); why = locked ? 'The race is closed, so this cannot be cleared.' : val ? 'Clear the release time' : !st.a ? 'Record the arrival first.' : 'Release the athlete now'; }
   var name = esc(athTag(r.a) + ' ' + r.a.name);
   return '<div class="fld pz-tfld"><span class="lb lr">' + lab + '</span><div class="tf tr' + (val ? ' filled' : '') + '">' +
     '<input class="tin pz-in" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="HH:MM:SS" value="' + (val ? pzClock(val) : '') + '" data-bind="pz" data-aid="' + r.a.id + '" data-k="' + k + '" data-f="pzin:' + r.a.id + ':' + k + '" aria-label="' + lab + ' time for ' + name + '"' + (ro_ || (k === 'r' && !st.a) ? ' disabled' : '') + '>' +
@@ -4639,7 +4654,8 @@ function pzRowHTML(r, sel, canStart){
     cd = '<span class="pz-cd' + (up ? ' done' : st.left <= 10000 ? ' pz-warn' : '') + '" role="timer" data-end="' + st.end + '">' + (up ? '0:00' : pzFmt(st.left)) + '</span>' +
       '<span class="pz-st">' + (up ? 'Time is up: release the athlete' : 'Serving') + '</span>';
   } else if (st.a && st.r) cd = '<span class="pz-el">In the zone ' + pzDur(st.r - st.a) + '</span>';
-  var svDis = roEnt() || !st.a, svWhy = roEnt() ? '' : !st.a ? 'Record the arrival first.' : st.served ? 'Not served after all' : 'Stop the countdown, record the release time as now, and mark the penalty served';
+  var svLocked = st.served && pzLocked();
+  var svDis = roEnt() || !st.a || svLocked, svWhy = roEnt() ? '' : svLocked ? 'The race is closed, so this cannot be unmarked.' : !st.a ? 'Record the arrival first.' : st.served ? 'Not served after all' : 'Stop the countdown, record the release time as now, and mark the penalty served';
   var served = '<label class="chk pz-chk" title="' + esc(svWhy) + '"><input type="checkbox" data-act="pz-served" data-aid="' + a.id + '" data-f="pzv:' + a.id + '"' + (st.served ? ' checked' : '') + (svDis ? ' disabled' : '') + '><span>Penalty Served</span></label>';
   return '<li class="pzrow ' + st.state + (r.dq ? ' dq' : '') + '" data-aid="' + a.id + '"><div class="pz-who">' + whoHTML(a) +
     '<span class="pz-meta">' + r.c + ' red card' + (r.c === 1 ? '' : 's') + (r.dq ? ' <em class="stx dq">DQ</em>' : '') + '</span></div>' +
@@ -6258,8 +6274,10 @@ document.addEventListener('click', function(e){
         if (!pzTime()) { toast('Choose a countdown time first.'); break; }
         pze.pza = String(pzn); pze.pzd = String(pzTime()); pze.pzr = ''; pze.pzv = '';
         queueEntries(PZM, 60); render();
-      } else if (pze.pzr) { pze.pzr = ''; pze.pzv = ''; queueEntries(PZM, 60); render(); }
-      else if (pze.pza) {
+      } else if (pze.pzr) {
+        if (pzLocked()) { toast('The race is closed, so this cannot be cleared. Reopen the race to make corrections.'); break; }
+        pze.pzr = ''; pze.pzv = ''; queueEntries(PZM, 60); render();
+      } else if (pze.pza) {
         if (pzState(pza, pzn).state === 'run') {
           var pzath = findAth(pza);
           confirmDlg('Release before the time is up?', 'The countdown for ' + esc(pzath ? athLabel(pzath) : 'this athlete') + ' has not finished. Release them anyway? They will be marked Penalty Served.', 'Release', function(){ pzRelease(pza, Date.now()); });
@@ -6270,7 +6288,10 @@ document.addEventListener('click', function(e){
     case 'pz-served': {
       if (roEnt()) { b.checked = !b.checked; break; }
       var svAid = b.dataset.aid, sve = ent(PZM, svAid);
-      if (sve.pzv) { sve.pzv = ''; queueEntries(PZM, 60); render(); break; }   // unchecking: just clear the served flag, keep any release time as-is
+      if (sve.pzv) {
+        if (pzLocked()) { b.checked = true; toast('The race is closed, so this cannot be unmarked. Reopen the race to make corrections.'); break; }
+        sve.pzv = ''; queueEntries(PZM, 60); render(); break;   // unchecking: just clear the served flag, keep any release time as-is
+      }
       if (!sve.pza) { b.checked = false; toast('Record the arrival first.'); break; }
       if (sve.pzr) { sve.pzv = '1'; queueEntries(PZM, 60); render(); break; }  // a release time is already recorded: just mark it served, without changing that time
       if (pzState(svAid, Date.now()).state === 'run') {
