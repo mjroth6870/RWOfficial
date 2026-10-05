@@ -448,6 +448,10 @@ thead .cin{font-weight:600;height:100%;text-align:center;color:var(--ink)}
 .tin::placeholder{color:var(--line-strong);font-weight:400}
 .stamp{flex:none;width:48px;border:0;border-left:1px solid var(--line-strong);background:var(--surface-2);display:grid;place-items:center}
 .stamp:hover:not([disabled]){background:var(--line)}
+.segwrap{display:flex;gap:6px}
+.segwrap .seg{flex:1;min-width:0}
+.seg-lock{width:44px;height:48px;border:1px solid var(--line-strong);border-radius:8px;background:var(--surface-2);display:grid;place-items:center;flex:none;color:var(--muted)}
+.fld.locked .seg,.tf.locked{opacity:.75}
 .seg{display:flex;height:48px;border:1px solid var(--line-strong);border-radius:8px;overflow:hidden;background:var(--surface)}
 .seg button{flex:1;border:0;border-left:1px solid var(--line-strong);background:transparent;font:700 22px var(--sans)}
 .seg button:first-child{border-left:0;flex:1.5;font-size:16px;font-weight:600}
@@ -3115,6 +3119,7 @@ var KEY = 'rwo1.';
 var ICON_CLOCK = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
 var ICON_X = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
 var ICON_X_SM = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+var ICON_LOCK = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="1.5"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
 
 function $(s, r){ return (r || document).querySelector(s); }
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
@@ -3137,6 +3142,9 @@ var LS = {
   set: function(k, v){ try { localStorage.setItem(k, v); } catch(e){} }
 };
 function nowNum(){ var d = new Date(); return String(d.getHours() * 100 + d.getMinutes()); }
+// A stored time digit-string (HHMM or HHMMSS) as HH:MM or HH:MM:SS, for a confirmation message -- the fields
+// themselves keep showing the plain digits, unchanged, since that is the existing, familiar way of typing one.
+function fmtEnt(v){ v = digits(v); if (!v) return ''; if (v.length <= 4) { v = v.padStart(4, '0'); return v.slice(0, 2) + ':' + v.slice(2); } return v.slice(0, 2) + ':' + v.slice(2, 4) + ':' + v.slice(4); }
 function todayISO(){
   var d = new Date(), p = function(n){ return (n < 10 ? '0' : '') + n; };
   return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
@@ -3439,7 +3447,8 @@ function normEntries(d){
   var out = {}, src = d && d.entries && typeof d.entries === 'object' ? d.entries : {};
   Object.keys(src).forEach(function(aid){
     var e = src[aid] || {};
-    var o = {y1:digits(e.y1), y2:digits(e.y2), rc:(e.rc === '>' || e.rc === '~') ? e.rc : '', rt:digits(e.rt), dn:digits(e.dn), lc:(e.lc === '>' || e.lc === '~') ? e.lc : '', lt:digits(e.lt), pza:big(e.pza), pzr:big(e.pzr), pzd:digits(e.pzd), pzv:e.pzv ? '1' : ''};      // big(): a timestamp is 13 digits, more than digits() keeps
+    var o = {y1:digits(e.y1), y2:digits(e.y2), rc:(e.rc === '>' || e.rc === '~') ? e.rc : '', rt:digits(e.rt), dn:digits(e.dn), lc:(e.lc === '>' || e.lc === '~') ? e.lc : '', lt:digits(e.lt), pza:big(e.pza), pzr:big(e.pzr), pzd:digits(e.pzd), pzv:e.pzv ? '1' : '',
+      y1Lock:e.y1Lock ? '1' : '', y2Lock:e.y2Lock ? '1' : '', rcLock:e.rcLock ? '1' : '', lcLock:e.lcLock ? '1' : ''};      // big(): a timestamp is 13 digits, more than digits() keeps
     if (o.y1 || o.y2 || o.rc || o.rt || o.dn || o.lc || o.lt || o.pza || o.pzr || o.pzd || o.pzv) out[aid] = o;
   });
   return out;
@@ -3447,9 +3456,9 @@ function normEntries(d){
 function pruned(n, id){ return normEntries({entries:rc(id || S.raceId).entries[n]}); }
 function pick(o, keys){ var r = {}; keys.forEach(function(k){ r[k] = o[k]; }); return JSON.parse(JSON.stringify(r)); }
 
-var BLANK = {y1:'', y2:'', rc:'', rt:'', dn:'', lc:'', lt:'', pza:'', pzr:'', pzd:'', pzv:''};
+var BLANK = {y1:'', y2:'', rc:'', rt:'', dn:'', lc:'', lt:'', pza:'', pzr:'', pzd:'', pzv:'', y1Lock:'', y2Lock:'', rcLock:'', lcLock:''};
 function getEntry(n, aid){ return S.entries[n][aid] || BLANK; }
-function ent(n, aid){ return S.entries[n][aid] || (S.entries[n][aid] = {y1:'', y2:'', rc:'', rt:'', dn:'', lc:'', lt:'', pza:'', pzr:'', pzd:'', pzv:''}); }
+function ent(n, aid){ return S.entries[n][aid] || (S.entries[n][aid] = {y1:'', y2:'', rc:'', rt:'', dn:'', lc:'', lt:'', pza:'', pzr:'', pzd:'', pzv:'', y1Lock:'', y2Lock:'', rcLock:'', lcLock:''}); }
 function findAth(id){ for (var i = 0; i < S.event.athletes.length; i++) if (S.event.athletes[i].id === id) return S.event.athletes[i]; return null; }
 // Every red card an athlete has, in judge order: the mark the judge gave ('>' bent knee, '~' loss of contact).
 // A judge contributes at most one mark, even with both a red card and a last 100m card (mirrors redCount's own logic).
@@ -5390,15 +5399,23 @@ function judgeListHTML(n){
   if (!list.length) return '<li class="empty">No athlete matches &ldquo;' + esc(S.filter) + '&rdquo;.</li>';
   return list.map(function(a){ return judgeRowHTML(n, a); }).join('');
 }
-function timeField(n, a, k, label, val, kind){
-  var lbCls = {y:'ly', r:'lr', n:'ln'}[kind], dis = lock(n) ? ' disabled' : '';
+function timeField(n, a, k, label, val, kind, locked){
+  // locked is false/undefined (normal), true (this field is itself the locked call -- y1/y2 -- so its own stamp
+  // button becomes the unlock control), or 'passive' (this field's time was recorded automatically with a locked
+  // red card elsewhere on the row -- rt/lt -- so it only shows the lock; unlocking it happens at that card instead).
+  var lbCls = {y:'ly', r:'lr', n:'ln'}[kind], dis = (lock(n) || locked) ? ' disabled' : '';
   var lab = label.replace('>', '&gt;');
+  // A locked call reuses the same stamp button position to show a lock, tappable (unlike the rest of the field) to
+  // unlock it -- so there is nothing new to find on the row, just a change in what tapping that one spot now does.
+  var stampAct = locked === true ? 'call-unlock' : 'stamp', stampDis = (lock(n) || locked === 'passive') ? ' disabled' : '';
+  var stampAria = locked === true ? 'Locked. Tap to unlock and change this call.' : locked === 'passive' ? 'Locked with the red card. Unlock that to change it.' : (val ? 'Clear time' : 'Use current time');
+  var stampIcon = locked ? ICON_LOCK : (val ? ICON_X : ICON_CLOCK);
   return '<div class="fld"><span class="lb ' + lbCls + '">' + lab + '</span>' +
-    '<div class="tf ' + {y:'ty', r:'tr', n:'tn'}[kind] + (val ? ' filled' : '') + '">' +
+    '<div class="tf ' + {y:'ty', r:'tr', n:'tn'}[kind] + (val ? ' filled' : '') + (locked ? ' locked' : '') + '">' +
       '<input class="tin" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" placeholder="Time" value="' + esc(val) + '"' +
         ' data-bind="ent" data-n="' + n + '" data-aid="' + a.id + '" data-k="' + k + '" data-f="ent:' + n + ':' + a.id + ':' + k + '"' +
         ' aria-label="' + lab + ' time of day for ' + esc(athTag(a)) + ' ' + esc(a.name) + '"' + dis + '>' +
-      '<button type="button" class="stamp" data-act="stamp" data-n="' + n + '" data-aid="' + a.id + '" data-k="' + k + '" data-f="st:' + n + ':' + a.id + ':' + k + '" data-has="' + (val ? 1 : 0) + '" aria-label="' + (val ? 'Clear time' : 'Use current time') + '"' + dis + '>' + (val ? ICON_X : ICON_CLOCK) + '</button>' +
+      '<button type="button" class="stamp" data-act="' + stampAct + '" data-n="' + n + '" data-aid="' + a.id + '" data-k="' + k + '" data-f="st:' + n + ':' + a.id + ':' + k + '" data-has="' + (val ? 1 : 0) + '" aria-label="' + stampAria + '" title="' + stampAria + '"' + stampDis + '>' + stampIcon + '</button>' +
     '</div></div>';
 }
 function whoHTML(a){
@@ -5421,19 +5438,23 @@ function judgeRowHTML(n, a){
   var red = e.rc || (l100 && e.lc);
   var cls = 'jrow' + (chief ? ' chief' : n === 1 ? ' dn1' + (l100 ? ' l100' : '') : '') + (red ? ' has-rc' : (!chief && (e.y1 || e.y2)) ? ' has-y' : (n === 1 && e.dn) ? ' has-dn' : '');
   // a red card selector: None, > or ~, saved to the field named by k (rc = the red card, lc = the Chief Judge's last 100m card)
-  function segF(k, cur, text, extra){
+  function segF(k, cur, text, extra, locked){
+    var segDis = dis || (locked ? ' disabled' : '');
     function b(v, label){
-      return '<button type="button" data-act="rc" data-k="' + k + '" data-n="' + n + '" data-aid="' + a.id + '" data-v="' + v + '" data-f="' + k + ':' + n + ':' + a.id + ':' + (v || 'none') + '" aria-pressed="' + (cur === v) + '"' + dis + '>' + label + '</button>';
+      return '<button type="button" data-act="rc" data-k="' + k + '" data-n="' + n + '" data-aid="' + a.id + '" data-v="' + v + '" data-f="' + k + ':' + n + ':' + a.id + ':' + (v || 'none') + '" aria-pressed="' + (cur === v) + '"' + segDis + '>' + label + '</button>';
     }
-    return '<div class="fld' + extra + '"><span class="lb lr">' + text + '</span><div class="seg" role="group" aria-label="' + text + ' for ' + esc(athTag(a)) + ' ' + esc(a.name) + '">' + b('', 'None') + b('>', '&gt;') + b('~', '~') + '</div></div>';
+    // A locked call gets its own small lock button beside the three options -- unlike those, it stays tappable (to
+    // unlock), since it is a different action from choosing one of the three, not one more of them.
+    var lockBtn = locked ? '<button type="button" class="stamp seg-lock" data-act="call-unlock" data-n="' + n + '" data-aid="' + a.id + '" data-k="' + k + '" aria-label="Locked. Tap to unlock and change this call." title="Locked. Tap to unlock and change this call."' + dis + '>' + ICON_LOCK + '</button>' : '';
+    return '<div class="fld' + extra + (locked ? ' locked' : '') + '"><span class="lb lr">' + text + '</span><div class="segwrap"><div class="seg" role="group" aria-label="' + text + ' for ' + esc(athTag(a)) + ' ' + esc(a.name) + '">' + b('', 'None') + b('>', '&gt;') + b('~', '~') + '</div>' + lockBtn + '</div></div>';
   }
   return '<li class="' + cls + '" data-aid="' + a.id + '">' +
     '<div class="jw"><span class="who"><span class="ids">' + (useBib() ? '<b class="idn">Bib #' + (esc(a.bib) || '&ndash;') + '</b>' : '') + (useHip() ? '<b class="idn">Hip #' + (esc(a.hip) || '&ndash;') + '</b>' : '') + '</span>' +
       '<span class="nm">' + (esc(a.name) || 'Unnamed athlete') + '</span></span></div>' +
-    (chief ? '' : timeField(n, a, 'y1', 'Yellow >', e.y1, 'y') + timeField(n, a, 'y2', 'Yellow ~', e.y2, 'y')) +
-    segF('rc', e.rc, chief ? 'Last 100m red card' : 'Red card', chief ? ' f-rc' : '') +
-    timeField(n, a, 'rt', 'Time of day', e.rt, 'r') +
-    (l100 ? segF('lc', e.lc, 'Last 100m red card', ' f-lc') + timeField(n, a, 'lt', 'Time of day', e.lt, 'r').replace('<div class="fld">', '<div class="fld f-lt">') : '') +
+    (chief ? '' : timeField(n, a, 'y1', 'Yellow >', e.y1, 'y', !!e.y1Lock) + timeField(n, a, 'y2', 'Yellow ~', e.y2, 'y', !!e.y2Lock)) +
+    segF('rc', e.rc, chief ? 'Last 100m red card' : 'Red card', chief ? ' f-rc' : '', !!e.rcLock) +
+    timeField(n, a, 'rt', 'Time of day', e.rt, 'r', e.rcLock ? 'passive' : false) +
+    (l100 ? segF('lc', e.lc, 'Last 100m red card', ' f-lc', !!e.lcLock) + timeField(n, a, 'lt', 'Time of day', e.lt, 'r', e.lcLock ? 'passive' : false).replace('<div class="fld">', '<div class="fld f-lt">') : '') +
     (n === 1 ? dnFieldHTML(n, a, e) : '') +
   '</li>';
 }
@@ -5484,6 +5505,9 @@ function closeDialog(){
   $('#dialog-root').innerHTML = ''; dlg = null;
   if (dlgReturn && document.contains(dlgReturn)) { try { dlgReturn.focus(); } catch(e){} }
   dlgReturn = null;
+}
+function confirmCallDlg(msg, fn){
+  openDialog({title:'Confirm this call', body:'<p>' + msg + '</p>', ok:'Confirm call', onOk:fn});
 }
 function confirmDlg(title, msg, okLabel, fn){
   openDialog({title:title, body:'<p>' + msg + '</p>', ok:okLabel, danger:true, onOk:fn});
@@ -6443,16 +6467,43 @@ document.addEventListener('click', function(e){
     }
     case 'stamp': {
       if (roEnt() || !isActive(+b.dataset.n) || !raceOpen()) break;
-      var jn = +b.dataset.n, en = ent(jn, b.dataset.aid), k = b.dataset.k;
+      var jn = +b.dataset.n, aidS = b.dataset.aid, k = b.dataset.k, en = ent(jn, aidS);
+      if (k === 'y1' || k === 'y2') {
+        if (en[k + 'Lock']) break;   // locked: handled by case 'call-unlock' instead
+        var athS = findAth(aidS), labS = k === 'y1' ? 'Yellow \u2014 Bent knee' : 'Yellow \u2014 Loss of contact', whoS = esc(athS ? athLabel(athS) : 'this athlete');
+        if (en[k]) {
+          confirmDlg('Clear this call?', 'Clear ' + esc(labS) + ' for ' + whoS + '. This call has not been locked yet.', 'Clear', function(){ en[k] = ''; queueEntries(jn, 60); render(); });
+        } else {
+          var whenS = nowNum();
+          confirmCallDlg(esc(labS) + ' for ' + whoS + ', at ' + fmtEnt(whenS) + '. Once confirmed, this call locks and cannot be changed without unlocking it first.', function(){ en[k] = whenS; en[k + 'Lock'] = '1'; queueEntries(jn, 60); render(); });
+        }
+        break;
+      }
+      if ((k === 'rt' && en.rcLock) || (k === 'lt' && en.lcLock)) break;   // recorded with the red card; change it by unlocking that card instead
       en[k] = en[k] ? '' : nowNum();
       queueEntries(jn, 120); render();
       break;
     }
     case 'rc': {
       if (roEnt() || !isActive(+b.dataset.n) || !raceOpen()) break;
-      var jn2 = +b.dataset.n;
-      ent(jn2, b.dataset.aid)[b.dataset.k === 'lc' ? 'lc' : 'rc'] = b.dataset.v;
-      queueEntries(jn2, 120); render();
+      var jn2 = +b.dataset.n, aidR = b.dataset.aid, kR = b.dataset.k === 'lc' ? 'lc' : 'rc', enR = ent(jn2, aidR);
+      if (enR[kR + 'Lock']) break;   // locked: handled by case 'call-unlock' instead
+      var athR = findAth(aidR), whoR = esc(athR ? athLabel(athR) : 'this athlete');
+      var labR = kR === 'lc' ? 'Last 100m red card' : 'Red card', valR = b.dataset.v, choiceR = valR === '>' ? 'Bent knee' : valR === '~' ? 'Loss of contact' : 'None';
+      var rtKeyR = kR === 'lc' ? 'lt' : 'rt', whenR = valR ? nowNum() : '';   // a real card records its own time of day automatically; choosing None does not
+      confirmCallDlg(labR + ': ' + choiceR + (whenR ? ', at ' + fmtEnt(whenR) : '') + ', for ' + whoR + '. Once confirmed, this call locks and cannot be changed without unlocking it first.', function(){
+        enR[kR] = valR; enR[kR + 'Lock'] = '1'; if (whenR) enR[rtKeyR] = whenR; queueEntries(jn2, 60); render();
+      });
+      break;
+    }
+    case 'call-unlock': {
+      if (roEnt() || !isActive(+b.dataset.n) || !raceOpen()) break;
+      var jnU = +b.dataset.n, aidU = b.dataset.aid, kU = b.dataset.k, enU = ent(jnU, aidU);
+      var athU = findAth(aidU), whoU = esc(athU ? athLabel(athU) : 'this athlete');
+      var rtKeyU = kU === 'rc' ? 'rt' : kU === 'lc' ? 'lt' : null;   // a red card's own time of day was set automatically with it, so removing or unlocking the call removes that time too
+      confirmDlg('Unlock this call?', 'This lets ' + whoU + '\u2019s call be changed again. It locks again once a new call is confirmed.' + (rtKeyU ? ' Its time of day is cleared, since it was recorded with the call.' : ''), 'Unlock', function(){
+        enU[kU + 'Lock'] = ''; if (rtKeyU) enU[rtKeyU] = ''; queueEntries(jnU, 60); render();
+      });
       break;
     }
   }
@@ -6481,6 +6532,7 @@ document.addEventListener('input', function(e){
     var n = +t.dataset.n, v = digits(t.value);
     if (!isActive(n) || !raceOpen()) return;
     if (v !== t.value) t.value = v;
+    if (k === 'y1' || k === 'y2') return;   // typing this call is confirmed on change, below, not committed keystroke by keystroke
     ent(n, t.dataset.aid)[k] = v;
     queueEntries(n, 500); refreshRow(t);
   }
@@ -6490,6 +6542,17 @@ document.addEventListener('change', function(e){
   var t = e.target;
   if (t.id === 'imp-file') { importFile(t); return; }
   if (t.dataset && t.dataset.bind === 'pz') { pzTyped(t); return; }
+  if (t.dataset && t.dataset.bind === 'ent' && (t.dataset.k === 'y1' || t.dataset.k === 'y2')) {
+    var nY = +t.dataset.n, kY = t.dataset.k, aidY = t.dataset.aid, enY = ent(nY, aidY), vY = digits(t.value);
+    if (roEnt() || !isActive(nY) || !raceOpen() || enY[kY + 'Lock']) { t.value = enY[kY] || ''; return; }
+    if (!vY) { t.value = enY[kY] || ''; return; }   // typing it blank does not clear a call; use the X button for that, which confirms first
+    var athY = findAth(aidY), whoY = esc(athY ? athLabel(athY) : 'this athlete'), labY = kY === 'y1' ? 'Yellow \u2014 Bent knee' : 'Yellow \u2014 Loss of contact';
+    t.value = enY[kY] || '';   // shows the confirmed value (or blank) until this is actually confirmed, below
+    confirmCallDlg(esc(labY) + ' for ' + whoY + ', at ' + fmtEnt(vY) + '. Once confirmed, this call locks and cannot be changed without unlocking it first.', function(){
+      enY[kY] = vY; enY[kY + 'Lock'] = '1'; queueEntries(nY, 60); render();
+    });
+    return;
+  }
   if (t.dataset && t.dataset.bind === 'copysrc') { S.copySrc = t.value; return; }
   if (t.dataset && t.dataset.bind === 'divsel' && !ro()) {
     var dv = S.event.divisions[+t.dataset.i], pickv = t.value;
