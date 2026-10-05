@@ -537,8 +537,14 @@ main{min-width:0}
 /* ---------- How to ---------- */
 .howto{max-width:920px}
 .howto h2.pg{margin:10px 0 4px;font:700 34px/1.1 var(--cond)}
-.howto .lead{margin:0 0 10px;color:var(--muted);max-width:60ch}
+.howto .lead{margin:0 0 10px;color:var(--muted)}
 .rule{display:grid;grid-template-columns:190px 1fr;gap:6px 32px;padding:20px 0;border-top:2px solid var(--ink)}
+.rule summary{display:contents;cursor:pointer;list-style:none}      /* display:contents unwraps the summary itself so its h3 sits directly in the grid, as if it were still a plain h3 child, while the native expand/collapse keeps working */
+.rule summary::-webkit-details-marker{display:none}
+.rule summary::marker{display:none}
+.rule h3 .chev{display:inline-block;flex:none;vertical-align:-3px;margin-right:6px;color:var(--muted);transition:transform .15s}
+.rule[open] h3 .chev{transform:rotate(90deg)}
+.rule summary:hover h3{color:var(--muted)}
 .rule h3{margin:0;font:700 30px/1.05 var(--cond)}
 .rule h3 small{display:block;margin-top:4px;font:500 14px var(--sans);color:var(--muted)}
 .rule ul{margin:0;padding-left:20px;max-width:64ch}
@@ -3120,6 +3126,7 @@ var ICON_CLOCK = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" st
 var ICON_X = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
 var ICON_X_SM = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
 var ICON_LOCK = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="1.5"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
+var ICON_CHEV = '<svg class="chev" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
 
 function $(s, r){ return (r || document).querySelector(s); }
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
@@ -4853,7 +4860,7 @@ function howtoHTML(){
     '<h2 class="pg">How this works</h2>' +
     '<p class="lead">One shared meet. Set it up on the Setup tab, then the Recorder adds the athletes, nine judges record what they see, and the Recorder and Red Cards tabs update as each entry is made.</p>' +
 
-    '<section class="rule"><h3>Setup<small>Setup tab</small></h3><ul>' +
+    '<details class="rule"><summary><h3>' + ICON_CHEV + 'Setup<small>Setup tab</small></h3></summary><ul>' +
       '<li>Start on the Setup tab. Enter the meet name, date, race distance(s), location, course length and road course certification #, and choose Combined race or Separate heats by divisions.</li>' +
       '<li>Under Athlete identification, choose whether athletes are identified by hip # and/or bib #. Only what you choose is shown on the other tabs and in exports.</li>' +
       '<li>Enter the recorder&rsquo;s and each judge&rsquo;s name and cert # &amp; level. Judges see their own on their tab.</li>' +
@@ -4864,21 +4871,21 @@ function howtoHTML(){
       '<li>Under Race format, check Penalty Zone to turn on the Penalty Zone tab, next to Red Cards. The tab stays greyed out until then. Once it is on, PZM (Penalty Zone Manager) can be turned on under Judges in this race. The PZM gets a QR code, shown on the Penalty Zone tab, that opens only that tab on their own device.</li>' +
       '<li>On the Penalty Zone tab, choose the countdown time for the race: 30 seconds, or 1 to 5 minutes. Athletes appear there when they receive the red card that sends them to the Penalty Zone. Record the time each arrives (the clock button, or type it) to start their countdown, which turns yellow for the last 10 seconds. Checking Penalty Served stops the countdown, records the release time as now, and releases the athlete, all in one step; the clock button is still there for recording a specific release time instead. A PZ marker then appears in the Red Cards column of the Recorder and Red Cards tabs, and DQ is added to it if a later red card disqualifies them.</li>' +
       '<li>Load sample race and Clear all judge entries are at the bottom of the Setup tab.</li>' +
-    '</ul></section>' +
+    '</ul></details>' +
 
-    '<section class="rule"><h3>Recorder<small>Recorder tab</small></h3><ul>' +
+    '<details class="rule"><summary><h3>' + ICON_CHEV + 'Recorder<small>Recorder tab</small></h3></summary><ul>' +
       '<li>Enter athlete information on the Recorder tab only. It fills in every other tab.</li>' +
       '<li>Every athlete needs a name and the numbers chosen under Athlete identification on the Setup tab (hip/lane # and/or bib #).</li>' +
       '<li>Paste athlete list, beside Add athlete, also accepts a start list copied from a results website. With a header row, its columns are matched by name rather than by position &mdash; Lane counts the same as Hip, Bib is kept if the website has it, and other columns such as team or seed time are ignored. In a heats meet, it adds to whichever race is currently open, so switch races first to bring in another.</li>' +
       '<li>Use Export PDF or Export CSV on the Recorder and Red Cards tabs, or Export PDF on the Penalty Zone tab, to keep a copy of the race. The Red cards column, and the Status column in the CSV, mark athletes PZ (penalty served) and DQ. In a heats meet, each export covers the race currently open; switch races to export another.</li>' +
-    '</ul></section>' +
+    '</ul></details>' +
 
-    '<section class="rule"><h3>Red Cards<small>Red Cards tab</small></h3><ul>' +
+    '<details class="rule"><summary><h3>' + ICON_CHEV + 'Red Cards<small>Red Cards tab</small></h3></summary><ul>' +
       '<li>Use the Red Cards tab during the meet to track red cards and run the DQ Board efficiently.</li>' +
       '<li>It shows each judge&rsquo;s red card and its time of day for every athlete. Yellow paddles appear only on the Recorder tab. Athletes who reach the Penalty Zone count are marked <b>PZ</b>, and athletes who reach the DQ count are marked <b>DQ</b>.</li>' +
-    '</ul></section>' +
+    '</ul></details>' +
 
-    '<section class="rule"><h3>Judges<small>Tabs 1 to 9</small></h3><ul>' +
+    '<details class="rule"><summary><h3>' + ICON_CHEV + 'Judges<small>Tabs 1 to 9</small></h3></summary><ul>' +
       '<li>Each judge works only in their own tab.</li>' +
       '<li><span class="sym">&gt;</span> <span class="sym">~</span> Yellow paddle fields: enter only the time of day for each paddle you show an athlete.</li>' +
       '<li><span class="sym r">&gt;</span> <span class="sym r">~</span> Red card: choose the violation, then enter the time of day.</li>' +
@@ -4886,16 +4893,16 @@ function howtoHTML(){
       '<li>The symbols are &gt; for bent knee and ~ for loss of contact.</li>' +
       '<li>Judge 1, the Chief Judge, also has a DQ notification field: the time of day an athlete is told they are disqualified and removed from the race.</li>' +
       '<li>AC1 and AC2 are optional extra positions. Turn them on under Judges in this race, and give each a QR code like any judge. For now they only enter DQ notifications. Those appear with the Chief Judge&rsquo;s on every tab and export, marked AC1 or AC2. They are not on the Recorder or Red Cards sheets.</li>' +
-    '</ul></section>' +
+    '</ul></details>' +
 
-    '<section class="rule"><h3>Divisions and heats<small>Race buttons</small></h3><ul>' +
+    '<details class="rule"><summary><h3>' + ICON_CHEV + 'Divisions and heats<small>Race buttons</small></h3></summary><ul>' +
       '<li>On the Setup tab, under Race format, choose Separate heats by divisions. Name each division and set how many heats it has.</li>' +
       '<li>A row of race buttons appears under the tabs, one for each division and heat. Select one to work in that race. Every race has its own Recorder sheet, Red Cards sheet and a sheet for each judge.</li>' +
       '<li>Judges: choose your race before you record. The race name is shown at the top of your sheet.</li>' +
       '<li>The meet name and date are shared. The recorder, officials, judges, red card counts and athletes are separate for each race. Copy officials and settings from another race to save retyping them.</li>' +
-    '</ul></section>' +
+    '</ul></details>' +
 
-    '<section class="rule"><h3>Your account and meets<small>My meets</small></h3><ul>' +
+    '<details class="rule"><summary><h3>' + ICON_CHEV + 'Your account and meets<small>My meets</small></h3></summary><ul>' +
       '<li>Sign in with an email address (you are emailed a link) and choose Create my account. There is no password. Your account is tied to your sign-in, and if your organization shares email addresses with this page, yours is shown but never stored.</li>' +
       '<li>Each account sets up its own meets. Only the account that created a meet can change its setup. Use My meets at the left of the tabs to switch meets.</li>' +
       '<li>When you start a new meet, your previous meets are archived, unless you untick that option. Archived meets are read-only, for everyone including officials, and can be exported or restored at any time.</li>' +
@@ -4904,33 +4911,34 @@ function howtoHTML(){
       '<li>The DQ Board, on the Setup tab, is a public scoreboard for a TV or projector: every athlete&rsquo;s hip or bib # and red cards, in number order, with no sign-in needed. Cast the link to a Chromecast from Chrome, or open it full-screen over HDMI. It sizes its own text to fill the screen automatically; set Rows per column there to fix it at a specific number of rows instead, for example to force bigger text on a small field. An athlete&rsquo;s number turns red once they are disqualified &mdash; either by reaching the red card count for a DQ, or by a last 100m red card from a supervisory Chief Judge, even with only that one card.</li>' +
       '<li>An admin can open Admin from My meets to browse every account and see the meets they own. From there, an admin can archive or restore any meet, reset an official&rsquo;s codes on it, and suspend or lift the suspension on an account &mdash; all without needing that account&rsquo;s owner. Open, on a meet, shows it read-only, with the same Export CSV, Export PDF and Export meet data tools its owner has, so an admin can pull a copy of anyone&rsquo;s results without changing anything; a banner marks the view and the back button returns to Admin. Editing someone else&rsquo;s meet setup directly, and deleting a meet or a login outright, are not offered here. The first account ever created becomes an admin automatically, and any admin can make or remove others from that screen.</li>' +
       '<li>Edit name, next to your name on My meets, lets you choose what is shown there instead of whatever your sign-in provided &mdash; useful if it shows an email address or an unfamiliar name. It changes everywhere your name appears, including the admin screen. Clear the box to go back to your sign-in&rsquo;s own name.</li>' +
-    '</ul></section>' +
+    '</ul></details>' +
 
-    '<section class="rule"><h3>Opening and closing races<small>Recorder tab</small></h3><ul>' +
+    '<details class="rule"><summary><h3>' + ICON_CHEV + 'Opening and closing races<small>Recorder tab</small></h3></summary><ul>' +
       '<li>On the Recorder tab, set Race status to Upcoming, Open or Closed. Judges can record only while the race is open.</li>' +
       '<li>On an upcoming or closed race, judge sheets are read-only. Reopen a closed race to make corrections.</li>' +
       '<li>Colors show where each race stands: <span class="lg st-open"><i></i>green is open</span>, <span class="lg st-up"><i></i>blue is upcoming</span>, <span class="lg st-done"><i></i>orange is closed, meaning completed</span>. They appear on the race buttons and in the pill at the top of every tab.</li>' +
-    '</ul></section>' +
+    '</ul></details>' +
 
-    '<section class="rule"><h3>Your own device<small>QR code</small></h3><ul>' +
+    '<details class="rule"><summary><h3>' + ICON_CHEV + 'Your own device<small>QR code</small></h3></summary><ul>' +
       '<li>Each judge tab has a button that shows a QR code for that judge. Scanning it on another device opens that judge&rsquo;s sheet, with every race that judge is officiating.</li>' +
       '<li>That device then shows only How To and the judge&rsquo;s own sheet, and the race buttons for the races the judge is on the panel for. Use Exit at the top to leave.</li>' +
       '<li>If the link opens the app but not the sheet, choose Enter official code on the How To tab and type the code shown under the QR code, for example J3-K7QM2X. In an account the code starts with the meet&rsquo;s short code, for example H4T9K-J3-K7QM2X.</li>' +
       '<li>The Recorder can replace every code under Official codes on the Setup tab. Old codes stop working, including on devices already using one.</li>' +
-    '</ul></section>' +
+    '</ul></details>' +
 
-    '<section class="rule"><h3>Live updates<small>Top right</small></h3><ul>' +
+    '<details class="rule"><summary><h3>' + ICON_CHEV + 'Live updates<small>Top right</small></h3></summary><ul>' +
       '<li>Information from the judges reaches the Recorder immediately, who then communicates with the DQ Board official.</li>' +
       '<li>This removes the need for card runners and speeds up Penalty Zone and DQ decisions for the athletes.</li>' +
       '<li><span class="dot live"></span><b>Live</b> means every open device shares the same meet. <span class="dot"></span><b>This device only</b> means live sync is not available here, so entries stay in this browser.</li>' +
-    '</ul></section>' +
+    '</ul></details>' +
 
-    '<section class="rule"><h3>FAQ</h3><ul>' +
+    '<details class="rule"><summary><h3>' + ICON_CHEV + 'FAQ</h3></summary><ul>' +
+      '<li><b>Need help, or have a suggestion?</b> Email <a href="mailto:walkjudgeapp@gmail.com">walkjudgeapp@gmail.com</a> for technical support, feature suggestions, or to report an error. Include a screenshot if you can &mdash; it helps a lot.</li>' +
       '<li><b>Will having many judges recording at once slow the app down or cause errors?</b> No. Marking a paddle or card does not save the instant you tap it &mdash; it waits a fraction of a second in case you tap something else, then saves once, so quick, repeated taps do not flood the connection. The number of judges a race walk meet actually uses is well within what this comfortably handles.</li>' +
       '<li><b>What happens if my connection drops while I&rsquo;m recording?</b> The app retries automatically a couple of times over a few seconds. If it is still failing after that, it tells you to check your connection and try again &mdash; it does not keep retrying by itself once you are back online, so if you see that message, touch the entry again once you have a signal.</li>' +
       '<li><b>What if the same judge&rsquo;s code ends up open on two phones at once?</b> Each save replaces that judge&rsquo;s whole sheet, so the later save can overwrite entries the other phone made. Only one device should record for a given position at a time. If the app notices this happening during an open race, it warns both devices. Penalty Zone is the one exception: more than one device there is expected, so it is never warned about.</li>' +
       '<li><b>Which browser should I use?</b> WalkJudge.com is designed to display and operate properly in Google Chrome. Using the app in any other browser may result in behavior that is not supported or tested to operate optimally.</li>' +
-    '</ul></section>' +
+    '</ul></details>' +
   '</div>';
 }
 
