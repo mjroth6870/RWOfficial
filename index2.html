@@ -478,6 +478,9 @@ thead .cin{font-weight:600;height:100%;text-align:center;color:var(--ink)}
   .jrow.dn1 > .fld:last-child{grid-column:1/-1}
 }
 .jline{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 0 10px}
+.jclear{margin-top:28px;padding-top:18px;border-top:1px solid var(--line)}
+.btn.clear-entries{background:var(--red);color:#000;border-color:var(--red);font-weight:700}
+.btn.clear-entries:hover{background:var(--red-ink)}
 .jline .jsum{margin:0}
 .btn.sm{min-height:38px;padding:0 12px;font-size:15px}
 main{min-width:0}
@@ -4999,7 +5002,7 @@ function howtoHTML(){
       '<li>Enter athlete information on the Recorder tab only. It fills in every other tab.</li>' +
       '<li>Every athlete needs a name and the numbers chosen under Athlete identification on the Setup tab (hip/lane # and/or bib #).</li>' +
       '<li>Paste athlete list, beside Add athlete, also accepts a start list copied from a results website. With a header row, its columns are matched by name rather than by position &mdash; Lane counts the same as Hip, Bib is kept if the website has it, and other columns such as team or seed time are ignored. In a heats meet, it adds to whichever race is currently open, so switch races first to bring in another.</li>' +
-      '<li>Use Export PDF or Export CSV on the Recorder and Red Cards tabs, or Export PDF on the Penalty Zone tab, to keep a copy of the race. The Red cards column, and the Status column in the CSV, mark athletes PZ (penalty served) and DQ. In a heats meet, each export covers the race currently open; switch races to export another.</li>' +
+      '<li>Use Export PDF on the Recorder, Red Cards or Penalty Zone tabs to keep a copy of the race. The Red cards column marks athletes PZ (penalty served) and DQ. In a heats meet, each export covers the race currently open; switch races to export another.</li>' +
     '</ul></details>' +
 
     '<details class="rule"><summary><h3>' + ICON_CHEV + 'Red Cards<small>Red Cards tab</small></h3></summary><ul>' +
@@ -5031,7 +5034,7 @@ function howtoHTML(){
       '<li>Officials do not need an account. They scan the QR code on their judge tab, or type its code.</li>' +
       '<li>Export meet data on the Setup tab saves a meet as a backup file. Import from file on My meets restores it, in this copy of the app or another.</li>' +
       '<li>The DQ Board, on the Setup tab, is a public scoreboard for a TV or projector: every athlete&rsquo;s hip or bib # and red cards, in number order, with no sign-in needed. Cast the link to a Chromecast from Chrome, or open it full-screen over HDMI. It sizes its own text to fill the screen automatically; set Rows per column there to fix it at a specific number of rows instead, for example to force bigger text on a small field. An athlete&rsquo;s number turns red once they are disqualified &mdash; either by reaching the red card count for a DQ, or by a last 100m red card from a supervisory Chief Judge, even with only that one card.</li>' +
-      '<li>An admin can open Admin from My meets to browse every account and see the meets they own. From there, an admin can archive or restore any meet, reset an official&rsquo;s codes on it, and suspend or lift the suspension on an account &mdash; all without needing that account&rsquo;s owner. Open, on a meet, shows it read-only, with the same Export CSV, Export PDF and Export meet data tools its owner has, so an admin can pull a copy of anyone&rsquo;s results without changing anything; a banner marks the view and the back button returns to Admin. Editing someone else&rsquo;s meet setup directly, and deleting a meet or a login outright, are not offered here. The first account ever created becomes an admin automatically, and any admin can make or remove others from that screen.</li>' +
+      '<li>An admin can open Admin from My meets to browse every account and see the meets they own. From there, an admin can archive or restore any meet, reset an official&rsquo;s codes on it, and suspend or lift the suspension on an account &mdash; all without needing that account&rsquo;s owner. Open, on a meet, shows it read-only, with the same Export PDF and Export meet data tools its owner has, so an admin can pull a copy of anyone&rsquo;s results without changing anything; a banner marks the view and the back button returns to Admin. Editing someone else&rsquo;s meet setup directly, and deleting a meet or a login outright, are not offered here. The first account ever created becomes an admin automatically, and any admin can make or remove others from that screen.</li>' +
       '<li>Edit name, next to your name on My meets, lets you choose what is shown there instead of whatever your sign-in provided &mdash; useful if it shows an email address or an unfamiliar name. It changes everywhere your name appears, including the admin screen. Clear the box to go back to your sign-in&rsquo;s own name.</li>' +
     '</ul></details>' +
 
@@ -5336,7 +5339,7 @@ function recorderHTML(){
     '<button class="btn primary" data-act="add-athlete"' + dis + '>Add athlete</button>' +
     '<button class="btn" data-act="paste"' + dis + '>Paste athlete list</button>' +
     '<span class="sp"></span>' +
-    (dl ? '<button class="btn" data-act="pdf" data-k="rec">Export PDF</button><button class="btn" data-act="csv">Export CSV</button>' : '') +
+    (dl ? '<button class="btn" data-act="pdf" data-k="rec">Export PDF</button>' : '') +   // Export CSV is hidden for now (not the exportCSV() function or its handler, just this button) -- not used often enough currently to keep visible, but kept easy to bring back
   '</div>' +
   '<p class="warn noprint" id="warn"' + (inc ? '' : ' hidden') + '>' + warnText(inc) + '</p>' +
   (S.narrow ? totalsSummaryHTML() + recorderCardsHTML(rows)
@@ -5476,7 +5479,7 @@ function redcardsHTML(){
     '<button class="btn" data-act="rc-sort" data-v="cards" aria-pressed="' + (S.rcSort === 'cards') + '">Most red cards first</button>' +
     '<button class="btn" data-act="rc-only" aria-pressed="' + S.rcOnly + '">Only athletes with red cards</button>' +
     '<span class="sp"></span>' +
-    (dl ? '<button class="btn" data-act="pdf" data-k="rc">Export PDF</button><button class="btn" data-act="csv">Export CSV</button>' : '') +
+    (dl ? '<button class="btn" data-act="pdf" data-k="rc">Export PDF</button>' : '') +   // Export CSV is hidden for now, same as on Recorder -- see the note there
   '</div>' +
   (S.narrow ? redcardsCardsHTML(shown, msg) : matrixHTML('rc', shown, msg));
 }
@@ -5493,9 +5496,9 @@ function judgeHTML(n){
     (raceOpen() ? '' : '<p class="banner ' + ST[raceStatus()].cls + '">This race is <b>' + ST[raceStatus()].label.toLowerCase() + '</b>. ' + (raceStatus() === 'closed' ? 'The Recorder can reopen it to make corrections.' : 'The Recorder opens it for updates when it starts.') + '</p>') +
     (isActive(n) ? '' : '<p class="banner">' + jtitle(n) + ' is not active in this race. The Recorder can turn this judge on under Judges in this race on the Setup tab.</p>') +
     '<div class="jtools"><input type="search" id="jq" data-f="jq" placeholder="Find an athlete by ' + orJoin((useHip() ? ['hip'] : []).concat(useBib() ? ['bib'] : [], ['name'])) + '" value="' + esc(S.filter) + '" aria-label="Find an athlete"></div>' +
-    '<div class="jline"><p class="jsum" id="jsum">' + judgeSummary(n) + '</p>' +
-      '<button class="btn danger sm" data-act="clear-judge" data-n="' + n + '"' + dis + '>Clear my entries</button></div>' +
-    '<ol class="jlist" id="jlist">' + judgeListHTML(n) + '</ol></div>';
+    '<div class="jline"><p class="jsum" id="jsum">' + judgeSummary(n) + '</p></div>' +
+    '<ol class="jlist" id="jlist">' + judgeListHTML(n) + '</ol>' +
+    '<div class="jclear"><button class="btn clear-entries" data-act="clear-judge" data-n="' + n + '"' + dis + '>Clear my entries</button></div></div>';
 }
 function qrPanelHTML(n){
   var open = S.qrOpen, nm = S.event.judges[n - 1].name;
