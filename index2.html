@@ -24,7 +24,7 @@
   --sans:'Barlow',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;
   --cond:'Barlow Condensed','Arial Narrow','Roboto Condensed',system-ui,sans-serif;
   --w-hip:56px; --w-bib:56px; --w-name:184px; --w-cnt:124px;
-  --w-y:62px; --w-rc:58px; --w-t:74px; --w-rc100:88px; --w-dn:88px;
+  --w-y:62px; --w-rc:58px; --w-t:60px; --w-rc100:88px; --w-dn:88px;
   --h1:34px; --h2:38px; --h3:36px; --h4:34px;
   color-scheme:light;
 }
@@ -280,7 +280,7 @@ main{padding:0 16px 56px}
 
 /* ---------- Matrix (Recorder + Red Cards) ---------- */
 .mx-wrap{overflow-x:auto;overflow-y:visible;border:1px solid var(--line);border-radius:10px;background:var(--surface)}      /* vertical scrolling is the page's own, not a separate region inside the table */
-.mx-fit{overflow-x:hidden;overflow-y:visible}
+.mx-fit{overflow:hidden}      /* a single value on both axes: mixing hidden with visible here forces visible to compute as auto instead (a CSS quirk), and since a scale() transform never actually shrinks this element's own layout box (only how it paints), that coerced auto was finding a real, if purely cosmetic, overflow and drawing a scrollbar for it -- eating into the width meant for the last column */
 .mx-scale{transform-origin:top left}
 table.mx{border-collapse:separate;border-spacing:0;table-layout:fixed;width:max-content;font-size:14px}
 .mx th,.mx td{padding:0 6px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--surface);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;font-weight:400}
@@ -3285,10 +3285,10 @@ var COLS = {
   y1:    {h:'Yellow >',           cls:'hy',    w:'y'},
   y2:    {h:'Yellow ~',           cls:'hy',    w:'y'},
   rc:    {h:'Red card',           cls:'hr',    w:'rc'},
-  rt:    {h:'Time of day',        cls:'ht',    w:'t'},
+  rt:    {h:'Time',               cls:'ht',    w:'t'},
   rc100: {h:'Last 100m red card', cls:'hr h2', w:'rc100'},
   lc:    {h:'Last 100m red card', cls:'hr h2', w:'rc100'},
-  lt:    {h:'Time of day',        cls:'ht',    w:'t'},
+  lt:    {h:'Time',               cls:'ht',    w:'t'},
   dn:    {h:'DQ notification',    cls:'hd h2', w:'dn'}
 };
 function activeList(){ var l = []; for (var n = 1; n <= NMAIN; n++) if (isActive(n)) l.push(n); return l; }      // the judges on the Recorder and Red Cards sheets
@@ -5929,7 +5929,7 @@ function buildPDF(JS, kind, paper){
   var FR = {rec:[['y1', 0.26], ['y2', 0.26], ['rc', 0.21], ['rt', 0.27]], rc:[['rc', 0.44], ['rt', 0.56]], chief:[['rc100', 0.30], ['rt', 0.26], ['dn', 0.44]],
             rec1:[['y1', 0.18], ['y2', 0.18], ['rc', 0.16], ['rt', 0.20], ['dn', 0.28]], rc1:[['rc', 0.30], ['rt', 0.28], ['dn', 0.42]],
             rec1l:[['y1', 0.125], ['y2', 0.125], ['rc', 0.11], ['rt', 0.13], ['lc', 0.15], ['lt', 0.13], ['dn', 0.23]], rc1l:[['rc', 0.12], ['rt', 0.18], ['lc', 0.17], ['lt', 0.22], ['dn', 0.31]]};
-  var HD = {y1:['Yellow >', 'y'], y2:['Yellow ~', 'y'], rc:['Red card', 'r'], rt:['Time of day', 't'], rc100:['Last 100m red card', 'r'], lc:['Last 100m red card', 'r'], lt:['Time of day', 't'], dn:['DQ notification', 'd']};
+  var HD = {y1:['Yellow >', 'y'], y2:['Yellow ~', 'y'], rc:['Red card', 'r'], rt:['Time', 't'], rc100:['Last 100m red card', 'r'], lc:['Last 100m red card', 'r'], lt:['Time', 't'], dn:['DQ notification', 'd']};
   function specFor(n){ return chiefSheet(n) ? FR.chief : n === 1 ? (l100On() ? (showY ? FR.rec1l : FR.rc1l) : (showY ? FR.rec1 : FR.rc1)) : (showY ? FR.rec : FR.rc); }
 
   // Rows follow what the tab shows (Red Cards respects its filter and sort).
