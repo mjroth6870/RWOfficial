@@ -217,6 +217,7 @@ main{padding:0 16px 56px}
 .pz-h{margin:16px 0 4px;font-size:16px;display:flex;align-items:center;gap:8px}
 .pz-setup{margin:8px 0 12px}
 .pzlist{list-style:none;margin:8px 0 4px;padding:0;display:grid;gap:8px}
+.pz-n{display:flex;flex-direction:column;gap:8px}
 .pzrow{display:grid;grid-template-columns:minmax(200px,1.2fr) auto 150px auto;gap:12px;align-items:center;padding:10px 12px;background:var(--surface);border:1px solid var(--line);border-left:6px solid var(--line-strong);border-radius:10px}
 .pzrow.run,.pzrow.time{border-left-color:var(--ink)}
 .pzrow.time{border-left-color:var(--ink)}
@@ -459,6 +460,15 @@ thead .cin{font-weight:600;height:100%;text-align:center;color:var(--ink)}
 .seg button:first-child[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
 .seg button:hover:not([aria-pressed="true"]):not([disabled]){background:var(--surface-2)}
 .empty{padding:28px 18px;background:var(--surface);border:1px dashed var(--line-strong);border-radius:10px;color:var(--muted)}
+.fld select{width:100%;height:48px;padding:0 10px;border:1px solid var(--line-strong);border-radius:8px;background:var(--surface);font-size:15px;color:var(--ink)}
+.fld .timer-ro{width:100%;height:48px;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);color:var(--ink);font-size:15px}
+.tlist{list-style:none;margin:0;padding:0}
+.trow{display:grid;grid-template-columns:minmax(160px,1.3fr) repeat(3,minmax(140px,1fr)) 44px;gap:10px;align-items:end;padding:10px 12px 12px;margin:0 0 8px;background:var(--surface);border:1px solid var(--line);border-radius:10px}
+.trow .xbtn{height:48px;width:44px;border:1px solid var(--line-strong);border-radius:8px}
+@media (max-width:980px){
+  .trow{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .trow .xbtn{grid-column:1/-1;justify-self:end;width:auto;padding:0 14px}
+}
 
 @media (max-width:980px){
   .jrow,.jrow.chief,.jrow.dn1,.jrow.ac{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -3167,20 +3177,21 @@ function fmtDate(s){
 /* ================================================================
    State
    ================================================================ */
-var MEET_KEYS = ['name', 'date', 'distance', 'location', 'courseLength', 'courseCert', 'raceMode', 'meetType', 'useHip', 'useBib', 'usePZ', 'dqId', 'boardRows', 'keys', 'shareLink', 'statuses', 'divCount', 'divisions'];               // shared by every race
-var RACE_KEYS = ['recorder', 'recorderCert', 'judges', 'active', 'supervisory', 'last100', 'athletes', 'dq', 'pit'];  // one set per race
+var MEET_KEYS = ['name', 'date', 'distance', 'location', 'courseLength', 'courseCert', 'raceMode', 'meetType', 'useHip', 'useBib', 'usePZ', 'useTimer', 'dqId', 'boardRows', 'keys', 'shareLink', 'statuses', 'divCount', 'divisions'];               // shared by every race
+var RACE_KEYS = ['recorder', 'recorderCert', 'judges', 'active', 'supervisory', 'last100', 'athletes', 'dq', 'pit', 'timerLog', 'timerInfo'];  // one set per race
 
 function blankMeet(){
   var dv = [];
   for (var k = 0; k < MAXDIV; k++) dv.push({name:'', heats:1, custom:false});
   var ks = [];
   for (var q = 0; q < NJ; q++) ks.push('');
-  return {name:'', date:'', distance:'', location:'', courseLength:'', courseCert:'', raceMode:'combined', meetType:'', useHip:true, useBib:true, usePZ:false, dqId:'', boardRows:0, keys:ks, shareLink:'', statuses:{}, divCount:2, divisions:dv};
+  return {name:'', date:'', distance:'', location:'', courseLength:'', courseCert:'', raceMode:'combined', meetType:'', useHip:true, useBib:true, usePZ:false, useTimer:true, dqId:'', boardRows:0, keys:ks, shareLink:'', statuses:{}, divCount:2, divisions:dv};
 }
+function blankTimerInfo(){ return {startTime:'', event:'', divisionName:''}; }
 function blankRace(){
   var j = [], on = [];
   for (var i = 0; i < NJ; i++) { j.push({name:'', cert:''}); on.push(i < NMAIN); }      // AC1 and AC2 start off
-  return {recorder:'', recorderCert:'', judges:j, active:on, supervisory:false, last100:false, athletes:[], dq:3, pit:0};
+  return {recorder:'', recorderCert:'', judges:j, active:on, supervisory:false, last100:false, athletes:[], dq:3, pit:0, timerLog:[], timerInfo:blankTimerInfo()};
 }
 function blankEntries(){ var a = []; for (var i = 0; i <= NJ; i++) a.push({}); return a; }
 
@@ -3417,6 +3428,7 @@ function normMeet(d){
   e.useHip = d.useHip !== false; e.useBib = d.useBib !== false;   // how athletes are identified; at least one is always on
   if (!e.useHip && !e.useBib) e.useHip = true;
   e.usePZ = d.usePZ === true;                 // the Penalty Zone tab is off unless the Recorder turns it on
+  e.useTimer = d.useTimer !== false;           // the Timer Notification tab is on by default, unless the Recorder turns it off
   e.dqId = d.dqId === 'hip' || d.dqId === 'bib' ? d.dqId : '';   // which number the DQ Board shows, when both are in use
   e.boardRows = boardRowsClamp(toInt(d.boardRows, 0, 200, 0));  // a fixed rows-per-column for the DQ Board; 0 = size it automatically
   for (var kk = 0; kk < NJ; kk++) e.keys[kk] = Array.isArray(d.keys) ? str(d.keys[kk]).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12) : '';
@@ -3448,24 +3460,46 @@ function normRace(d){
   e.last100 = d.last100 === true && !e.supervisory;     // only a Chief Judge who is judging can use the separate last 100m card   // Official 1 is the supervising official only and is not judging
   e.dq = toInt(d.dq, 1, 9, 3);
   e.pit = toInt(d.pit, 0, 9, 0);
+  e.timerLog = Array.isArray(d.timerLog) ? d.timerLog.filter(function(r){ return r && typeof r === 'object'; }).slice(0, 500).map(normTimerRow) : [];
+  e.timerInfo = normTimerInfo(d.timerInfo);
+  return e;
+}
+// One Timer Notification entry: which athlete it is for (one per athlete; the athlete and their DQ notification
+// time are not stored here at all, since they are read live from the DQ notification already entered on Judge 1's,
+// AC1's or AC2's own tab), which rule applied (matched against the fixed reference list so a stray value cannot
+// smuggle in something the PDF cannot print), and the Penalty Zone time to add after the race (one of the fixed
+// countdown choices, same reasoning).
+function normTimerRow(r){
+  r = r || {};
+  // The rule is stored as its index into RULES_REF (see the note by that constant), so this only accepts a plain
+  // digit string naming a real index -- anything else, including an old rule-number string, resolves to unset.
+  var raw = str(r.rule), n = /^[0-9]+$/.test(raw) ? +raw : -1, validRule = n >= 0 && n < RULES_REF.length;
+  var pz = toInt(r.pzAdd, 0, 100000, 0), validPz = PZ_TIMES.indexOf(pz) >= 0;
+  return {aid:str(r.aid), rule:validRule ? String(n) : '', pzAdd:validPz ? String(pz) : ''};
+}
+function normTimerInfo(d){
+  var e = blankTimerInfo();
+  if (!d || typeof d !== 'object') return e;
+  e.startTime = digits(d.startTime); e.event = str(d.event).slice(0, 120);
+  e.divisionName = str(d.divisionName != null ? d.divisionName : d.category).slice(0, 80);   // divisionName replaces the earlier category field; old saves are still read
   return e;
 }
 function normEntries(d){
   var out = {}, src = d && d.entries && typeof d.entries === 'object' ? d.entries : {};
   Object.keys(src).forEach(function(aid){
     var e = src[aid] || {};
-    var o = {y1:digits(e.y1), y2:digits(e.y2), rc:(e.rc === '>' || e.rc === '~') ? e.rc : '', rt:digits(e.rt), dn:digits(e.dn), lc:(e.lc === '>' || e.lc === '~') ? e.lc : '', lt:digits(e.lt), pza:big(e.pza), pzr:big(e.pzr), pzd:digits(e.pzd), pzv:e.pzv ? '1' : '',
+    var o = {y1:digits(e.y1), y2:digits(e.y2), rc:(e.rc === '>' || e.rc === '~') ? e.rc : '', rt:digits(e.rt), dn:digits(e.dn), lc:(e.lc === '>' || e.lc === '~') ? e.lc : '', lt:digits(e.lt), pza:big(e.pza), pzr:big(e.pzr), pzd:digits(e.pzd), pzv:e.pzv ? '1' : '', pzAddFlag:e.pzAddFlag ? '1' : '',
       y1Lock:e.y1Lock ? '1' : '', y2Lock:e.y2Lock ? '1' : '', rcLock:e.rcLock ? '1' : '', lcLock:e.lcLock ? '1' : ''};      // big(): a timestamp is 13 digits, more than digits() keeps
-    if (o.y1 || o.y2 || o.rc || o.rt || o.dn || o.lc || o.lt || o.pza || o.pzr || o.pzd || o.pzv) out[aid] = o;
+    if (o.y1 || o.y2 || o.rc || o.rt || o.dn || o.lc || o.lt || o.pza || o.pzr || o.pzd || o.pzv || o.pzAddFlag) out[aid] = o;
   });
   return out;
 }
 function pruned(n, id){ return normEntries({entries:rc(id || S.raceId).entries[n]}); }
 function pick(o, keys){ var r = {}; keys.forEach(function(k){ r[k] = o[k]; }); return JSON.parse(JSON.stringify(r)); }
 
-var BLANK = {y1:'', y2:'', rc:'', rt:'', dn:'', lc:'', lt:'', pza:'', pzr:'', pzd:'', pzv:'', y1Lock:'', y2Lock:'', rcLock:'', lcLock:''};
+var BLANK = {y1:'', y2:'', rc:'', rt:'', dn:'', lc:'', lt:'', pza:'', pzr:'', pzd:'', pzv:'', pzAddFlag:'', y1Lock:'', y2Lock:'', rcLock:'', lcLock:''};
 function getEntry(n, aid){ return S.entries[n][aid] || BLANK; }
-function ent(n, aid){ return S.entries[n][aid] || (S.entries[n][aid] = {y1:'', y2:'', rc:'', rt:'', dn:'', lc:'', lt:'', pza:'', pzr:'', pzd:'', pzv:'', y1Lock:'', y2Lock:'', rcLock:'', lcLock:''}); }
+function ent(n, aid){ return S.entries[n][aid] || (S.entries[n][aid] = {y1:'', y2:'', rc:'', rt:'', dn:'', lc:'', lt:'', pza:'', pzr:'', pzd:'', pzv:'', pzAddFlag:'', y1Lock:'', y2Lock:'', rcLock:'', lcLock:''}); }
 function findAth(id){ for (var i = 0; i < S.event.athletes.length; i++) if (S.event.athletes[i].id === id) return S.event.athletes[i]; return null; }
 // Every red card an athlete has, in judge order: the mark the judge gave ('>' bent knee, '~' loss of contact).
 // A judge contributes at most one mark, even with both a red card and a last 100m card (mirrors redCount's own logic).
@@ -4508,6 +4542,7 @@ function render(){
   if (S.board) { try { document.title = 'DQ Board' + (meet.name ? ' \u2013 ' + meet.name : ''); } catch(e){} setHTML($('#app'), boardHTML()); layoutBoard(); return; }
   if (S.screen !== 'meet') { renderAccount(); return; }
   if (S.tab === 'penalty' && S.started && !usePZ() && !S.official) { S.tab = 'recorder'; LS.set(KEY + 'tab', S.tab); }     // turned off while it was open
+  if (S.tab === 'timer' && S.started && !useTimer() && !S.official) { S.tab = 'recorder'; LS.set(KEY + 'tab', S.tab); }
   var ui = captureUI();
   syncPresence();
   renderHeader(); renderNav(); renderRaceBar(); renderView();
@@ -4537,6 +4572,7 @@ function renderPill(){
 
 /* ---------- Tabs ---------- */
 function usePZ(){ return S.event.usePZ === true; }
+function useTimer(){ return S.event.useTimer === true; }
 
 /* ---------- Penalty Zone ----------
    Kept with the Penalty Zone Manager's entries (position 12), so the Recorder and the PZM can both use the tab and every device sees it.
@@ -4550,7 +4586,7 @@ function pzTime(){ return +getEntry(PZM, PZ_KEY).pzd || 0; }              // sec
 function pzState(aid, now){
   var e = getEntry(PZM, aid), a = +e.pza || 0, r = +e.pzr || 0, d = +e.pzd || 0, served = !!e.pzv, end = a && d ? a + d * 1000 : 0;
   var state = served ? 'served' : r ? 'rel' : !a ? 'wait' : (end && end <= now) ? 'time' : 'run';
-  return {state:state, a:a, r:r, d:d, end:end, left:end ? end - now : 0, served:served};
+  return {state:state, a:a, r:r, d:d, end:end, left:end ? end - now : 0, served:served, addTime:!!e.pzAddFlag};
 }
 function pzServed(aid){ return usePZ() && !!getEntry(PZM, aid).pzv; }
 function pzFmt(ms){ var t = Math.max(0, Math.ceil(ms / 1000)); return Math.floor(t / 60) + ':' + ('0' + (t % 60)).slice(-2); }
@@ -4673,15 +4709,21 @@ function pzRowHTML(r, sel, canStart){
   var svLocked = st.served && pzLocked();
   var svDis = roEnt() || !st.a || svLocked, svWhy = roEnt() ? '' : svLocked ? 'The race is closed, so this cannot be unmarked.' : !st.a ? 'Record the arrival first.' : st.served ? 'Not served after all' : 'Stop the countdown, record the release time as now, and mark the penalty served';
   var served = '<label class="chk pz-chk" title="' + esc(svWhy) + '"><input type="checkbox" data-act="pz-served" data-aid="' + a.id + '" data-f="pzv:' + a.id + '"' + (st.served ? ' checked' : '') + (svDis ? ' disabled' : '') + '><span>Penalty Served</span></label>';
+  // Unlike Penalty Served, this is meant above all for an athlete who never arrived at all -- who reached the red
+  // card count for the Penalty Zone but finished without serving any time there -- so it does not require an
+  // arrival the way Penalty Served does.
+  var atLocked = st.addTime && pzLocked();
+  var atDis = roEnt() || atLocked, atWhy = roEnt() ? '' : atLocked ? 'The race is closed, so this cannot be unmarked.' : st.addTime ? 'Not needed after all' : 'Lists this athlete on the Timer Notification tab, with Rule 230.3J pre-selected, so the Penalty Zone time still owed can be added to their result';
+  var addTime = '<label class="chk pz-chk" title="' + esc(atWhy) + '"><input type="checkbox" data-act="pz-add-time" data-aid="' + a.id + '" data-f="pzat:' + a.id + '"' + (st.addTime ? ' checked' : '') + (atDis ? ' disabled' : '') + '><span>Add PZ time</span></label>';
   return '<li class="pzrow ' + st.state + (r.dq ? ' dq' : '') + '" data-aid="' + a.id + '"><div class="pz-who">' + whoHTML(a) +
     '<span class="pz-meta">' + r.c + ' red card' + (r.c === 1 ? '' : 's') + (r.dq ? ' <em class="stx dq">DQ</em>' : '') + '</span></div>' +
     '<div class="pz-box">' + pzTimeBox(r, 'a', st.a, canStart, sel) + pzTimeBox(r, 'r', st.r, canStart, sel) + '</div>' +
-    '<div class="pz-t">' + cd + '</div><div class="pz-n">' + served + '</div></li>';
+    '<div class="pz-t">' + cd + '</div><div class="pz-n">' + served + addTime + '</div></li>';
 }
 function pzSection(title, rows, sel, canStart){
   return rows.length ? '<h3 class="pz-h">' + title + '<span class="count">' + rows.length + '</span></h3><ul class="pzlist" aria-label="' + title + '">' + rows.map(function(r){ return pzRowHTML(r, sel, canStart); }).join('') + '</ul>' : '';
 }
-function validTab(t){ return t === 'howto' || t === 'setup' || t === 'recorder' || t === 'redcards' || t === 'penalty' || /^j(1[01]|[1-9])$/.test(t || ''); }
+function validTab(t){ return t === 'howto' || t === 'setup' || t === 'recorder' || t === 'redcards' || t === 'penalty' || t === 'timer' || /^j(1[01]|[1-9])$/.test(t || ''); }
 function jtabHTML(n){
   var nm = S.event.judges[n - 1].name, on = isActive(n);
   return '<button class="tab jt' + (on ? '' : ' off') + '" role="tab" aria-selected="' + (S.tab === 'j' + n) + '" data-act="tab" data-tab="j' + n + '" aria-label="' + jtitle(n) + (nm ? ', ' + esc(nm) : '') + (on ? (chiefSheet(n) ? ', supervisory official' : '') : ', not active in this race') + '" title="' + esc((nm || jtitle(n)) + (on ? (chiefSheet(n) ? ' (supervisory)' : '') : ' (not active)')) + '">' + jtag(n) + '</button>';
@@ -4694,10 +4736,11 @@ function renderNav(){
     return;
   }
   var nRC = S.event.athletes.filter(function(a){ return redCount(a.id) > 0; }).length;
-  var base = [['howto','How To'], ['setup','Setup'], ['recorder','Recorder'], ['redcards','Red Cards'], ['penalty','Penalty Zone']];
+  var base = [['howto','How To'], ['setup','Setup'], ['recorder','Recorder'], ['redcards','Red Cards'], ['penalty','Penalty Zone'], ['timer','Timer Notification']];
   var homeBtn = S.acct && S.screen === 'meet' ? '<button type="button" class="tab homebtn" data-act="home" title="' + (S.fromAdmin ? 'Back to the admin screen' : 'Back to your meets') + '">&lsaquo; ' + (S.fromAdmin ? 'Admin' : 'My meets') + '</button>' : '';
   var h = '<div class="tabrow">' + homeBtn + base.map(function(t){
     if (t[0] === 'penalty' && !usePZ()) return '<button type="button" class="tab" role="tab" aria-selected="false" aria-disabled="true" disabled title="Turn on Penalty Zone under Race format on the Setup tab">' + t[1] + '</button>';
+    if (t[0] === 'timer' && !useTimer()) return '<button type="button" class="tab" role="tab" aria-selected="false" aria-disabled="true" disabled title="Turn on Timer Notification under Race format on the Setup tab">' + t[1] + '</button>';
     var badge = t[0] === 'redcards' && nRC ? '<span class="badge" title="Athletes with red cards">' + nRC + '</span>' : '';
     return '<button class="tab" role="tab" aria-selected="' + (S.tab === t[0]) + '" data-act="tab" data-tab="' + t[0] + '">' + t[1] + badge + '</button>';
   }).join('');
@@ -4840,6 +4883,84 @@ function penaltyHTML(){
     : '<p class="off-note">No athletes are in the Penalty Zone yet.</p>';
   return h + mgr + '</section>';
 }
+
+/* ---------- Timer Notification: for every athlete with a DQ notification already entered on Judge 1's (the Chief
+   Judge's), AC1's or AC2's tab, a row appears here automatically with that athlete and their DQ notification time
+   read live from there -- nothing about an athlete or their DQ time is entered or stored a second time on this tab.
+   The Timer only adds the rule that applied and, when the athlete finished before serving it, the Penalty Zone time
+   still owed (timerLog, keyed by athlete), plus a few details specific to this form (timerInfo), kept with the race
+   like athletes and officials, so this exports to a form matching the paper one some meets already use. ---------- */
+function timerRuleOptions(selected){
+  var h = '<option value="">None</option>';
+  RULES_REF.forEach(function(r, i){ h += '<option value="' + i + '"' + (selected === String(i) ? ' selected' : '') + '>' + esc(r[0] + ' - ' + r[1]) + '</option>'; });
+  return h;
+}
+function timerPzOptions(selected){
+  var h = '<option value="">None</option>';
+  PZ_TIMES.forEach(function(t){ h += '<option value="' + t + '"' + (selected === String(t) ? ' selected' : '') + '>' + esc(pzLabel(t)) + '</option>'; });
+  return h;
+}
+// "Hip #, Bib #, Name", using only whichever of hip/bib this meet actually identifies athletes by.
+function timerAthleteLabel(a){
+  var p = [];
+  if (useHip()) p.push('Hip #' + (a.hip || '\u2013'));
+  if (useBib()) p.push('Bib #' + (a.bib || '\u2013'));
+  p.push(a.name || 'Unnamed athlete');
+  return p.join(', ');
+}
+// Every DQ notification already entered for this athlete, from wherever it was entered (Judge 1's own, and/or
+// AC1's or AC2's) -- the same athlete and times already shown on the Recorder tab, each time formatted with a
+// colon here for readability on this form (the Recorder tab itself keeps showing the plain digits, as always).
+function timerDqText(aid){
+  return dnItems(aid, getEntry(1, aid)).map(function(i){ var t = fmtEnt(i.t); return i.who ? t + ' (' + i.who + ')' : t; }).join('; ');
+}
+// Athletes with at least one DQ notification, or marked on the Penalty Zone tab as needing PZ time added to their
+// result, in roster order -- these are the rows this tab shows, automatically.
+function timerCandidates(){
+  return S.event.athletes.filter(function(a){ return dnItems(a.id, getEntry(1, a.id)).length > 0 || getEntry(PZM, a.id).pzAddFlag === '1'; });
+}
+// Reading an entry (for display) never creates one; only actually setting a rule or a PZ time does, via timerEntryFor below.
+function getTimerEntry(aid){ return (S.event.timerLog || []).filter(function(r){ return r.aid === aid; })[0] || {aid:aid, rule:'', pzAdd:''}; }
+function timerEntryFor(aid){
+  var arr = S.event.timerLog, e = arr.filter(function(r){ return r.aid === aid; })[0];
+  if (!e) { e = {aid:aid, rule:'', pzAdd:''}; arr.push(e); }
+  return e;
+}
+function timerRowHTML(a, dis){
+  var te = getTimerEntry(a.id);
+  return '<li class="trow">' +
+    '<div class="fld"><span class="lb ln">Athlete #</span><input class="timer-ro" value="' + esc(timerAthleteLabel(a)) + '" disabled></div>' +
+    '<div class="fld"><span class="lb ln">DQ Notification</span><input class="timer-ro" value="' + esc(timerDqText(a.id)) + '" disabled></div>' +
+    '<div class="fld"><span class="lb ln">Rule #</span><select data-bind="timerrow" data-aid="' + a.id + '" data-k="rule" data-f="trow:' + a.id + ':rule" aria-label="Rule applied"' + dis + '>' + timerRuleOptions(te.rule) + '</select></div>' +
+    '<div class="fld"><span class="lb ln">PZ time to be added</span><select data-bind="timerrow" data-aid="' + a.id + '" data-k="pzAdd" data-f="trow:' + a.id + ':pz" aria-label="Penalty Zone time to add"' + dis + '>' + timerPzOptions(te.pzAdd) + '</select></div>' +
+  '</li>';
+}
+function timerHTML(){
+  var ev = S.event;
+  if (!useTimer()) return '<section class="band"><h2 class="sec-h">Timer Notification</h2><p class="off-note">Timer Notification is off. Turn it on under Race format on the Setup tab.</p></section>';
+  var dis = roEnt() ? ' disabled' : '';
+  var ti = ev.timerInfo || blankTimerInfo();
+  var rp = raceParts(S.raceId);
+  var defEvent = ti.event || ev.name, defDiv = ti.divisionName || (rp ? divLabel(rp.d) : '');
+  var candidates = timerCandidates();
+  var header = '<section class="band noprint"><h2 class="sec-h">Meet details</h2>' +
+    '<p class="off-note">Date and distance come from the Setup tab. The rest is just for this form, and can be filled in here.</p>' +
+    '<div class="fields">' +
+      '<div class="field"><label>Date</label><input value="' + esc(ev.date ? fmtDate(ev.date) : '') + '" disabled></div>' +
+      '<div class="field"><label for="ti-start">Start time</label><div class="tf tn' + (ti.startTime ? ' filled' : '') + '">' +
+        '<input id="ti-start" class="tin" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" placeholder="Time" value="' + esc(ti.startTime) + '" data-bind="timerinfo" data-k="startTime" data-f="ti:startTime" aria-label="Start time"' + dis + '>' +
+        '<button type="button" class="stamp" data-act="timer-info-stamp" data-f="tist" aria-label="' + (ti.startTime ? 'Clear time' : 'Use current time') + '" title="' + (ti.startTime ? 'Clear time' : 'Use current time') + '"' + dis + '>' + (ti.startTime ? ICON_X : ICON_CLOCK) + '</button></div></div>' +
+    '</div><div class="fields">' +
+      '<div class="field"><label for="ti-event">Event</label><input id="ti-event" data-bind="timerinfo" data-k="event" data-f="ti:event" value="' + esc(defEvent) + '" placeholder="Event name"' + dis + '></div>' +
+      '<div class="field"><label>Distance</label><input value="' + esc(ev.distance) + '" disabled></div>' +
+      '<div class="field"><label for="ti-division">Division Name</label><input id="ti-division" data-bind="timerinfo" data-k="divisionName" data-f="ti:division" value="' + esc(defDiv) + '" placeholder="Division name"' + dis + '></div>' +
+    '</div></section>';
+  var toolbar = dl ? '<div class="toolbar noprint"><span class="sp"></span><button class="btn" data-act="timer-pdf">Export PDF</button></div>' : '';
+  var list = candidates.length
+    ? '<ul class="tlist">' + candidates.map(function(a){ return timerRowHTML(a, dis); }).join('') + '</ul>'
+    : '<div class="empty">Nothing yet. An athlete appears here automatically once a DQ notification time is entered on Judge 1&rsquo;s (the Chief Judge&rsquo;s), AC1&rsquo;s, or AC2&rsquo;s tab, or once Add PZ time is checked for them on the Penalty Zone tab.</div>';
+  return raceHeadHTML() + header + '<section class="band"><h2 class="sec-h">Entries</h2>' + toolbar + list + '</section>';
+}
 function renderView(){
   var html;
   if (S.tab === 'howto') html = howtoHTML();
@@ -4847,6 +4968,7 @@ function renderView(){
   else if (S.tab === 'recorder') html = recorderHTML();
   else if (S.tab === 'redcards') html = redcardsHTML();
   else if (S.tab === 'penalty') html = penaltyHTML();
+  else if (S.tab === 'timer') html = timerHTML();
   else html = judgeHTML(+S.tab.slice(1));
   setHTML($('#view'), html);
 }
@@ -5248,7 +5370,8 @@ function raceFormatHTML(){
   }
   var h = '<div class="rformat noprint"><div class="jp-head"><span class="jp-title" id="rf-t">Race format</span></div>' +
     '<div class="rf-opts" role="group" aria-labelledby="rf-t">' + opt('combined', 'Combined race') + opt('heats', 'Separate heats by divisions') + '</div>' +
-    '<div class="rf-opts pz-opt" role="group" aria-label="Penalty Zone"><label class="chk"><input type="checkbox" data-act="pz-opt" data-f="pz:opt"' + (usePZ() ? ' checked' : '') + dis + '><span>Penalty Zone<small>Turns on the Penalty Zone tab, next to Red Cards. The Penalty Zone Manager (PZM) can then be turned on under Judges in this race.</small></span></label></div>';
+    '<div class="rf-opts pz-opt" role="group" aria-label="Penalty Zone"><label class="chk"><input type="checkbox" data-act="pz-opt" data-f="pz:opt"' + (usePZ() ? ' checked' : '') + dis + '><span>Penalty Zone<small>Turns on the Penalty Zone tab, next to Red Cards. The Penalty Zone Manager (PZM) can then be turned on under Judges in this race.</small></span></label>' +
+      '<label class="chk"><input type="checkbox" data-act="timer-opt" data-f="timer:opt"' + (useTimer() ? ' checked' : '') + dis + '><span>Timer Notification<small>Turns on the Timer Notification tab. On by default. It lists every athlete with a DQ notification already entered on Judge 1&rsquo;s, AC1&rsquo;s or AC2&rsquo;s tab, and lets the rule applied and a Penalty Zone time still owed be added for each.</small></span></label></div>';
   if (heats) {
     h += '<div class="rf-div">' +
       '<div class="mt-group"><div class="jp-head"><span class="jp-title" id="mt-t">Meet type</span></div>' +
@@ -5741,6 +5864,10 @@ function pdfSafe(v){
 
 // Rules reference printed at the bottom of every page of the Recorder, Red Cards and Penalty Zone PDFs.
 var RULES_REF = [['230.3C', '3rd Red Card'], ['230.3F', 'Last 100m'], ['230.3J', '4th Red Card'], ['230.3J', 'PZ Time Added After Race'], ['145.2', 'Unsporting Conduct']];
+// Two of these share the rule number 230.3J for two different situations, so a Timer Notification entry's chosen
+// rule is stored as its index in this array, not its rule number -- a rule number alone cannot tell those two
+// entries apart. Found by description, not hardcoded, so it still finds the right one if this list is ever reordered.
+var PZ_ADD_RULE_IDX = RULES_REF.findIndex(function(x){ return x[1] === 'PZ Time Added After Race'; });
 function rulesRefLayout(doc, PW, M){
   var maxW = PW - 2 * M, gap = 22, lines = [], cur = [], curW = 0;
   RULES_REF.forEach(function(r){
@@ -6222,6 +6349,142 @@ function buildPZPDF(JS, paper){
   return doc;
 }
 
+// Rules shown at the bottom of the Timer Notification PDF, 3 to a row, in RULES_REF's own order -- a plain grid,
+// not the running-text style the other exports use, closer to the paper form this is meant to resemble.
+function timerRuleGridLayout(){
+  var rows = [[], []];
+  RULES_REF.forEach(function(r, i){ rows[Math.floor(i / 3)].push(r); });
+  return rows;
+}
+function buildTimerPDF(JS){
+  var ev = S.event, ti = ev.timerInfo || blankTimerInfo();
+  var PW = 612, PH = 792, M = 36;      // US Letter, portrait: this is a form, not a wide data table
+  var doc = new JS({orientation:'portrait', unit:'pt', format:[PW, PH], compress:true});
+  var evName = pdfSafe(ev.name);
+  doc.setProperties({title:'Race Walk Officiating - Timer Notification' + (evName ? ' - ' + evName : '') + (inHeats() ? ' - ' + pdfSafe(raceLabel(S.raceId)) : ''), creator:'Race Walk Officiating'});
+
+  function setF(bold, size, c){ doc.setFont('helvetica', bold ? 'bold' : 'normal'); doc.setFontSize(size); doc.setTextColor(c[0], c[1], c[2]); }
+  function fill(c){ doc.setFillColor(c[0], c[1], c[2]); }
+  function stroke(c, w){ doc.setDrawColor(c[0], c[1], c[2]); doc.setLineWidth(w); }
+  function box(x, y, w, h, bg){ fill(bg); stroke(PC.line, 0.5); doc.rect(x, y, w, h, 'FD'); }
+  function mid(t, x, y){ doc.text(t, x, y, {align:'center', baseline:'middle'}); }
+  function left(t, x, y){ doc.text(t, x, y, {baseline:'middle'}); }
+  function fit(t, w){
+    t = pdfSafe(t);
+    if (doc.getTextWidth(t) <= w) return t;
+    while (t.length > 1 && doc.getTextWidth(t + '...') > w) t = t.slice(0, -1);
+    return t + '...';
+  }
+
+  var rp = raceParts(S.raceId);
+  var eventTxt = ti.event || ev.name, divTxt = ti.divisionName || (rp ? divLabel(rp.d) : '');
+
+  var colW = [(PW - 2 * M) * 0.26, (PW - 2 * M) * 0.15, (PW - 2 * M) * 0.32, (PW - 2 * M) * 0.27];   // Rule # gets the most room: "230.3J - PZ Time Added After Race" is the longest text this column ever shows
+  var xs = [M]; for (var ci = 1; ci < 4; ci++) xs.push(xs[ci - 1] + colW[ci - 1]);
+  var LAB = ['Athlete #', 'DQ Notification', 'Rule #', 'PZ Time to be Added'];
+
+  var rows = timerCandidates().map(function(a){
+    var te = getTimerEntry(a.id), ruleDef = RULES_REF[+te.rule];   // the rule is stored by index, since two entries share a rule number (see the note by RULES_REF)
+    return {
+      athlete: timerAthleteLabel(a),
+      time: timerDqText(a.id),
+      rule: ruleDef ? (ruleDef[0] + ' - ' + ruleDef[1]) : '',
+      pz: te.pzAdd ? pzLabel(+te.pzAdd) : ''
+    };
+  });
+
+  var TITLE_H = 44, FIELDS_H = 100, HDR_H = 22, RH = 20;
+  var ruleRows = timerRuleGridLayout(), RULES_H = 16 + 16 * ruleRows.length + 10;
+  var SIG_H = 20 * 3 + 30;
+  var top = M + TITLE_H + FIELDS_H, bodyTop = top + HDR_H, footH = RULES_H + SIG_H;
+  var perPage = Math.max(1, Math.floor((PH - M - footH - bodyTop) / RH));
+  var pagesY = Math.max(1, Math.ceil(rows.length / perPage));
+  var exported = pdfSafe(new Date().toLocaleString());
+
+  function drawTitle(){
+    setF(false, 8.5, PC.muted); left('Race Walk Officiating', M, M + 6);
+    setF(true, 16, PC.ink); left('Timer DQ & PZ Notification', M, M + 24);
+    if (evName) { setF(true, 13, PC.ink); doc.text(evName, PW - M, M + 10, {align:'right', baseline:'middle'}); }
+    if (inHeats()) { setF(true, 10, PC.muted); doc.text(fit(raceLabel(S.raceId), 240), PW - M, M + 24, {align:'right', baseline:'middle'}); }
+    stroke(PC.strong, 0.8); doc.line(M, M + 36, PW - M, M + 36);
+  }
+  function fieldBox(x, y, w, h, label, value){
+    box(x, y, w, h, PC.white);
+    setF(true, 7.5, PC.muted); left(label, x + 6, y + 10);
+    setF(false, 9.5, PC.ink); left(fit(value, w - 12), x + 6, y + h - 9);
+  }
+  function drawFields(){
+    var y = top - FIELDS_H + 4, rowH = 28, gap = 8, w2 = (PW - 2 * M - gap) / 2;
+    fieldBox(M, y, w2, rowH, 'Date', ev.date ? fmtDate(ev.date) : '');
+    fieldBox(M + w2 + gap, y, w2, rowH, 'Start Time', ti.startTime ? fmtEnt(ti.startTime) : '');
+    y += rowH + 6;
+    fieldBox(M, y, PW - 2 * M, rowH, 'Event', eventTxt);
+    y += rowH + 6;
+    fieldBox(M, y, w2, rowH, 'Distance', ev.distance);
+    fieldBox(M + w2 + gap, y, w2, rowH, 'Division Name', divTxt);
+  }
+  function drawHeader(){
+    for (var i = 0; i < 4; i++) { box(xs[i], top, colW[i], HDR_H, PC.s2); setF(true, 8.5, PC.ink); mid(LAB[i], xs[i] + colW[i] / 2, top + HDR_H / 2); }
+  }
+  function drawRow(r, y){
+    var cy = y + RH / 2;
+    for (var i = 0; i < 4; i++) box(xs[i], y, colW[i], RH, PC.white);
+    setF(false, 8.5, PC.ink);
+    left(fit(r.athlete, colW[0] - 8), xs[0] + 4, cy);
+    mid(r.time, xs[1] + colW[1] / 2, cy);
+    left(fit(r.rule, colW[2] - 8), xs[2] + 4, cy);
+    mid(fit(r.pz, colW[3] - 8), xs[3] + colW[3] / 2, cy);
+  }
+  function drawRulesGrid(y0){
+    var w = (PW - 2 * M) / 3;
+    setF(true, 8, PC.ink); left('Rules related to disqualification and Penalty Zone time', M, y0);
+    var gy = y0 + 16;
+    ruleRows.forEach(function(line, li){
+      for (var cj = 0; cj < 3; cj++){
+        var cell = line[cj];
+        if (!cell) continue;
+        var cx = M + cj * w, cy2 = gy + li * 16;
+        setF(true, 7.5, PC.ink); left('R# ' + cell[0] + ' ', cx, cy2);
+        var w1 = doc.getTextWidth('R# ' + cell[0] + ' ');
+        setF(false, 7.5, PC.muted); left(fit(cell[1], w - w1 - 4), cx + w1, cy2);
+      }
+    });
+    return gy + 16 * ruleRows.length;
+  }
+  function drawSignatures(y0){
+    var lines = [['Referee Name/Signature', ''], ['Chief Judge Name/Signature', (ev.judges[0] && ev.judges[0].name) || ''], ['Recorder Name/Signature', ev.recorder || '']];
+    lines.forEach(function(ln, li){
+      var y = y0 + 20 * li;
+      stroke(PC.line, 0.6); doc.line(M, y, PW - M, y);
+      setF(true, 7.5, PC.muted); left(ln[0], M, y - 4);
+      if (ln[1]) { setF(false, 9, PC.ink); doc.text(pdfSafe(ln[1]), PW - M, y - 4, {align:'right', baseline:'middle'}); }
+    });
+  }
+  function drawPage(chunk, pageNo, total){
+    drawTitle(); drawFields(); drawHeader();
+    var nRows = Math.max(1, chunk.length);
+    if (!chunk.length) {
+      box(M, bodyTop, PW - 2 * M, RH * 2, PC.white);
+      setF(false, 9, PC.muted); left('Nothing recorded for this race.', M + 8, bodyTop + RH);
+      nRows = 2;
+    } else chunk.forEach(function(r, i){ drawRow(r, bodyTop + i * RH); });
+    var bottom = bodyTop + nRows * RH, right = PW - M;
+    stroke(PC.ink, 1.2); for (var i = 0; i < 4; i++) doc.line(xs[i], top, xs[i], bottom);
+    doc.line(right, top, right, bottom); doc.line(M, top + HDR_H, right, top + HDR_H);
+    stroke(PC.strong, 1); doc.line(M, bottom, right, bottom); doc.line(M, top, M, bottom);
+    var afterRules = drawRulesGrid(PH - M - footH + 10);
+    drawSignatures(afterRules + 24);
+    setF(false, 7.5, PC.muted);
+    left('Exported ' + exported, M, PH - 10);
+    doc.text('Page ' + pageNo + ' of ' + total, PW - M, PH - 10, {align:'right', baseline:'middle'});
+  }
+  for (var pi2 = 0; pi2 < pagesY; pi2++) {
+    if (pi2 > 0) doc.addPage();
+    drawPage(rows.slice(pi2 * perPage, (pi2 + 1) * perPage), pi2 + 1, pagesY);
+  }
+  return doc;
+}
+
 async function exportPDF(kind, paper){
   if (!dl) return;
   var JS;
@@ -6232,6 +6495,21 @@ async function exportPDF(kind, paper){
   catch (err) { toast('Could not build the PDF.'); try { console.error(err); } catch (x) {} return; }
   var ev = S.event;
   var fname = 'race-walk-' + (kind === 'rc' ? 'red-cards' : kind === 'pz' ? 'penalty-zone' : 'recorder') + '-' + (ev.name || 'meet').replace(/[^\w.-]+/g, '-') + (inHeats() ? '-' + raceLabel(S.raceId).replace(/[^\w.-]+/g, '-') : '') + (ev.date ? '-' + ev.date : '') + '.pdf';
+  try { await dl.save({filename:fname, data:doc.output('arraybuffer')}); toast('PDF ready.'); }
+  catch (err) { if (!err || err.code !== 'declined') toast('Could not export the PDF in this view.'); }
+}
+// Timer Notification has only one sensible page size (it is a form, not a wide data table), so this skips the
+// paper-size dialog the other exports use and just builds and saves it directly.
+async function exportTimerPDF(){
+  if (!dl) return;
+  var JS;
+  try { JS = await ensurePDF(); }
+  catch (err) { toast('The PDF tool could not load. Check the connection and try again.'); return; }
+  var doc;
+  try { doc = buildTimerPDF(JS); }
+  catch (err) { toast('Could not build the PDF.'); try { console.error(err); } catch (x) {} return; }
+  var ev = S.event;
+  var fname = 'race-walk-timer-notification-' + (ev.name || 'meet').replace(/[^\w.-]+/g, '-') + (inHeats() ? '-' + raceLabel(S.raceId).replace(/[^\w.-]+/g, '-') : '') + (ev.date ? '-' + ev.date : '') + '.pdf';
   try { await dl.save({filename:fname, data:doc.output('arraybuffer')}); toast('PDF ready.'); }
   catch (err) { if (!err || err.code !== 'declined') toast('Could not export the PDF in this view.'); }
 }
@@ -6331,6 +6609,18 @@ document.addEventListener('click', function(e){
       } else pzRelease(svAid, Date.now());
       break;
     }
+    case 'pz-add-time': {
+      if (roEnt()) { b.checked = !b.checked; break; }
+      var atAid = b.dataset.aid, ate = ent(PZM, atAid);
+      if (ate.pzAddFlag) {
+        if (pzLocked()) { b.checked = true; toast('The race is closed, so this cannot be unmarked. Reopen the race to make corrections.'); break; }
+        ate.pzAddFlag = ''; queueEntries(PZM, 60); render(); break;
+      }
+      ate.pzAddFlag = '1'; queueEntries(PZM, 60);
+      timerEntryFor(atAid).rule = String(PZ_ADD_RULE_IDX); queueRace(60);   // pre-selects "230.3J - PZ Time Added After Race" specifically, not the other rule sharing that same number
+      render();
+      break;
+    }
     case 'pz-preset': {
       if (ro()) break;
       if (S.event.pit > 0) S.event.dq = S.event.pit + 1; else { S.event.pit = 3; if (S.event.dq <= 3) S.event.dq = 4; }
@@ -6344,6 +6634,20 @@ document.addEventListener('click', function(e){
       b.checked = S.event.usePZ;
       break;
     }
+    case 'timer-opt': {
+      if (ro()) break;
+      S.event.useTimer = !S.event.useTimer;
+      queueMeet(200); render();
+      b.checked = S.event.useTimer;
+      break;
+    }
+    case 'timer-info-stamp': {
+      if (roEnt()) break;
+      S.event.timerInfo.startTime = S.event.timerInfo.startTime ? '' : nowNum();
+      queueRace(200); render();
+      break;
+    }
+    case 'timer-pdf': exportTimerPDF(); break;
     case 'dq-id': {
       if (ro()) break;
       S.event.dqId = b.dataset.v;
@@ -6541,6 +6845,10 @@ document.addEventListener('input', function(e){
     if (k === 'y1' || k === 'y2') return;   // typing this call is confirmed on change, below, not committed keystroke by keystroke
     ent(n, t.dataset.aid)[k] = v;
     queueEntries(n, 500); refreshRow(t);
+  } else if (b === 'timerinfo') {
+    if (roEnt()) return;
+    if (k === 'startTime') { var tiv = digits(t.value); if (tiv !== t.value) t.value = tiv; S.event.timerInfo.startTime = tiv; queueRace(500); return; }
+    S.event.timerInfo[k] = t.value; queueRace(500);
   }
 });
 
@@ -6557,6 +6865,11 @@ document.addEventListener('change', function(e){
     confirmCallDlg(esc(labY) + ' for ' + whoY + ', at ' + fmtEnt(vY) + '. Once confirmed, this call locks and cannot be changed without unlocking it first.', function(){
       enY[kY] = vY; enY[kY + 'Lock'] = '1'; queueEntries(nY, 60); render();
     });
+    return;
+  }
+  if (t.dataset && t.dataset.bind === 'timerrow' && !roEnt()) {
+    var tk = t.dataset.k;
+    if (tk === 'rule' || tk === 'pzAdd') { timerEntryFor(t.dataset.aid)[tk] = t.value; queueRace(200); render(); }
     return;
   }
   if (t.dataset && t.dataset.bind === 'copysrc') { S.copySrc = t.value; return; }
