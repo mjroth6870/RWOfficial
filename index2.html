@@ -4815,7 +4815,13 @@ function boardShell(inner){ return '<div class="board" role="main">' + inner + '
 // not fit beside it. Below this, fewer/wider columns are used instead, even in automatic sizing.
 // Wide enough for a number plus the common case: the red cards for a DQ (3-4 is typical) and the DQ badge itself,
 // without needing to trim them. An athlete with unusually many cards may still have the last one or two clipped.
-var BOARD_MIN_COL_RATIO = 4.2;
+var BOARD_GAP = 16;        // matches .board-list's own column-gap
+var BOARD_STATUS_W = 44;   // the DQ/PZ status badge's own width, in pixels -- fixed, unlike everything else here, which scales with row height
+// The narrowest a column can be and still show one worst-case row -- the most red cards an athlete can have right
+// before disqualification, plus the DQ badge -- without any of it being cut off. Derived directly from each red
+// card chip's, the number's, and the row's own gap and padding CSS formulas (all of which scale with
+// --board-row-h, added together here), plus the status badge's fixed width.
+function boardRowWidthNeeded(rowH, dq){ return rowH * (1.544 + dq * 0.68) + BOARD_STATUS_W; }
 function layoutBoard(){
   if (!S.board) return;
   var list = document.querySelector('.board-list');
@@ -4824,20 +4830,30 @@ function layoutBoard(){
   if (!rows) return;
   var h = list.clientHeight, w = list.clientWidth;
   if (!h || !w) return;
+  var dq = Math.max(1, +S.event.dq || 3);
   var manual = +S.event.boardRows || 0;
-  var cols, rpc;
+  var cols, rpc, colW;
   if (manual > 0) {
-    rpc = manual; cols = Math.max(1, Math.ceil(rows / rpc));   // a fixed choice is used as given, even if a column ends up narrow
+    rpc = manual; cols = Math.max(1, Math.ceil(rows / rpc));   // a fixed rows-per-column choice is used as given, even if that then caps how tall each row can be (below)
+    colW = (w - (cols - 1) * BOARD_GAP) / cols;
   } else {
-    cols = Math.max(1, Math.floor(w / 280));
+    cols = Math.max(1, Math.floor((w + BOARD_GAP) / (280 + BOARD_GAP)));
     rpc = Math.max(1, Math.ceil(rows / cols));
-    // automatic sizing shrinks toward fewer, wider columns (bigger rows, so more rows per column) until each is wide enough for its content
-    while (cols > 1 && (w / cols) < (h / rpc) * BOARD_MIN_COL_RATIO) { cols--; rpc = Math.max(1, Math.ceil(rows / cols)); }
+    colW = (w - (cols - 1) * BOARD_GAP) / cols;
+    // automatic sizing shrinks toward fewer, wider columns (bigger rows, so more rows per column) until each is
+    // wide enough for its worst-case row
+    while (cols > 1 && boardRowWidthNeeded(h / rpc, dq) > colW) {
+      cols--; rpc = Math.max(1, Math.ceil(rows / cols));
+      colW = (w - (cols - 1) * BOARD_GAP) / cols;
+    }
   }
+  var rowH = h / rpc;
+  var maxRowH = (colW - BOARD_STATUS_W) / (1.544 + dq * 0.68);
+  if (rowH > maxRowH) rowH = Math.max(24, maxRowH);   // a last-resort safety net -- mainly for a fixed rows-per-column choice, which cannot widen its columns the way automatic sizing just did
   list.style.setProperty('--board-rows', rpc);
   list.style.setProperty('--board-cols', cols);
-  list.style.setProperty('--board-row-h', (h / rpc) + 'px');
-  list.style.setProperty('--board-col-w', (w / cols) + 'px');
+  list.style.setProperty('--board-row-h', rowH + 'px');
+  list.style.setProperty('--board-col-w', colW + 'px');
 }
 window.__layoutBoard = layoutBoard;   // exposed so a test harness (jsdom has no real layout engine) can exercise the sizing arithmetic directly
 (function(){ var t = null; window.addEventListener('resize', function(){ clearTimeout(t); t = setTimeout(layoutBoard, 150); }); })();
