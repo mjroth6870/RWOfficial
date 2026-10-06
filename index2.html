@@ -279,7 +279,7 @@ main{padding:0 16px 56px}
 .field input[disabled]{background:var(--surface-2)}
 
 /* ---------- Matrix (Recorder + Red Cards) ---------- */
-.mx-wrap{overflow:auto;max-height:calc(100vh - 110px);max-height:var(--wrap-h,calc(100dvh - 110px));border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+.mx-wrap{overflow-x:auto;overflow-y:visible;border:1px solid var(--line);border-radius:10px;background:var(--surface)}      /* vertical scrolling is the page's own, not a separate region inside the table */
 .mx-fit{overflow-x:hidden;overflow-y:visible}
 .mx-scale{transform-origin:top left}
 table.mx{border-collapse:separate;border-spacing:0;table-layout:fixed;width:max-content;font-size:14px}
@@ -651,12 +651,11 @@ main{min-width:0}
 }
 @media (max-height:520px){
   .top{padding-top:6px;padding-bottom:2px}
-  .mx-wrap{max-height:calc(100vh - 20px);max-height:var(--wrap-h,calc(100dvh - 20px))}
 }
 @media print{
   .noprint,.tabs,.racebar,.top .pill{display:none !important}
   body{background:#fff}
-  .mx-wrap{max-height:none;overflow:visible;border:0}
+  .mx-wrap{overflow:visible;border:0}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none !important;animation:none !important;scroll-behavior:auto !important}}
 </style>
@@ -4515,28 +4514,33 @@ function restoreUI(ui){
   }
   if (window.pageYOffset !== ui.py || window.pageXOffset !== ui.px) window.scrollTo(ui.px, ui.py);
 }
-// Size the grid so its bottom edge (and the pinned Totals row) sits inside the screen when the page is scrolled to the top.
+// Red Cards (not Recorder) gets fit to the available width here; neither table constrains its own height any more --
+// the page itself scrolls vertically, the same as the rest of the app, instead of a separate scrolling region inside the table.
 function fitGrid(){
   var w = document.querySelector('.mx-wrap');
   if (!w) return;
-  var top = w.getBoundingClientRect().top + window.pageYOffset;
-  w.style.setProperty('--wrap-h', Math.max(280, Math.floor(window.innerHeight - top - 12)) + 'px');
   fitRedCards(w);
 }
-// The Red Cards table shrinks to whatever scale fits the whole screen, width and height together, so it never needs to
-// scroll at all, however many judges or athletes there are. (Recorder is unchanged: it still scrolls, with pinned columns;
-// a sticky header cannot work once its table is scaled like this, which is why the table is fit to the height too, so
-// nothing is ever left to scroll to.)
+// The Red Cards table always scales to exactly fill the available width -- shrinking when there are enough judges to
+// make it wider than the screen, but also growing when there are few enough that it would otherwise sit narrower than
+// the screen with empty space to its right, however many judges or athletes there are. (Recorder is unchanged: it
+// still scrolls horizontally, with pinned columns and a sticky header, which only works unscaled like this.)
 function fitRedCards(wrap){
   if (!wrap.classList.contains('mx-wrap-rc')) return;
   var fit = wrap.querySelector('.mx-fit'), scaleEl = wrap.querySelector('.mx-scale');
-  if (!fit || !scaleEl) return;
+  var table = scaleEl && scaleEl.querySelector('table');
+  if (!fit || !scaleEl || !table) return;
   scaleEl.style.transform = 'none'; fit.style.width = ''; fit.style.height = '';
-  var naturalW = scaleEl.scrollWidth, naturalH = scaleEl.scrollHeight;
-  var availW = wrap.clientWidth, availH = wrap.clientHeight;      // read directly: these already exclude the wrap's own border, unlike a fresh viewport calculation
-  if (!naturalW || !naturalH || !availW || !availH) return;
-  var scale = Math.min(1, availW / naturalW, availH / naturalH);
-  scaleEl.style.transform = scale < 1 ? 'scale(' + scale + ')' : 'none';
+  // Measured on the table itself, not the wrapping .mx-scale div: that div is a plain block element which stretches
+  // to fill .mx-fit regardless of how wide its content actually is, so its own scrollWidth is the stretched
+  // container's width, not the table's -- measuring that instead of the table silently made the width term below
+  // a no-op (natural-width-over-available-width was always ~1), which is why this previously left empty space on
+  // the right whenever height was the more restrictive dimension, however many judges there were.
+  var naturalW = table.scrollWidth, naturalH = table.scrollHeight;
+  var availW = wrap.clientWidth;      // read directly: this already excludes the wrap's own border, unlike a fresh viewport calculation
+  if (!naturalW || !naturalH || !availW) return;
+  var scale = availW / naturalW;
+  scaleEl.style.transform = Math.abs(scale - 1) > 0.001 ? 'scale(' + scale + ')' : 'none';
   scaleEl.style.transformOrigin = 'top left';
   fit.style.width = Math.ceil(naturalW * scale) + 'px';
   fit.style.height = Math.ceil(naturalH * scale) + 'px';
