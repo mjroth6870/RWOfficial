@@ -3100,7 +3100,7 @@ var qrcode = function() {
 /* ================================================================
    Constants & helpers
    ================================================================ */
-var NJ = 12, NMAIN = 9, NAC = 2, PZM = 12, MAXDIV = 32, MAXHEATS = 10;
+var NJ = 12, NMAIN = 9, NAC = 2, PZM = 12, MAXDIV = 32, MAXHEATS = 10, MIN_JUDGES = 3;   // MIN_JUDGES: a race needs at least this many of the main judges (1-9) turned on; AC1, AC2 and the PZM don't count toward it
 // Positions 10 and 11 are the assistant chief positions AC1 and AC2. They have a sheet of their own (a DQ notification for now),
 // but they are never part of the Recorder or Red Cards sheets, their totals or their exports.
 // Position 12 is the Penalty Zone Manager, PZM. It has no judge sheet: its QR code opens the Penalty Zone tab.
@@ -5447,7 +5447,9 @@ function judgePickHTML(){
   var dis = ro() ? ' disabled' : '', k = activeList().length, h = '', ah = '', n, on;
   for (n = 1; n <= NMAIN; n++) {
     on = isActive(n);
-    h += '<button type="button" class="jpick" data-act="toggle-judge" data-n="' + n + '" data-f="jp:' + n + '" aria-pressed="' + on + '" aria-label="Judge ' + n + '" title="Judge ' + n + (on ? ' is on for this race. Select to turn off.' : ' is off. Select to turn on.') + '"' + dis + '>' + n + '</button>';
+    var jMinLocked = on && k <= MIN_JUDGES;   // this is one of only MIN_JUDGES judges left on, so turning it off is not allowed
+    var jTitle = on ? (jMinLocked ? 'At least ' + MIN_JUDGES + ' judges are required for a race, so this one cannot be turned off. Turn on another judge first.' : 'Judge ' + n + ' is on for this race. Select to turn off.') : 'Judge ' + n + ' is off. Select to turn on.';
+    h += '<button type="button" class="jpick" data-act="toggle-judge" data-n="' + n + '" data-f="jp:' + n + '" aria-pressed="' + on + '" aria-label="Judge ' + n + '" title="' + jTitle + '"' + (dis || jMinLocked ? ' disabled' : '') + '>' + n + '</button>';
   }
   for (n = NMAIN + 1; n <= NMAIN + NAC; n++) {
     on = isActive(n);
@@ -5458,6 +5460,7 @@ function judgePickHTML(){
     (pzOn ? 'Penalty Zone Manager (PZM) ' + (pon ? 'is on for this race. Select to turn off.' : 'is off. Select to turn on.') : 'Turn on Penalty Zone under Race format to use the Penalty Zone Manager.') + '"' + (pzOn ? dis : ' disabled') + '>PZM</button>';
   return '<div class="jpicker noprint"><div class="jp-head"><span class="jp-title" id="jp-t">Judges in this race</span><span class="jp-count">' + k + ' of ' + NMAIN + ' on</span></div>' +
     '<div class="jp-row" role="group" aria-labelledby="jp-t">' + h + '<span class="jp-sep" aria-hidden="true"></span>' + ah + '</div>' +
+    '<p class="jp-note">At least ' + MIN_JUDGES + ' judges are required for a race, so the last ' + MIN_JUDGES + ' cannot be turned off until another is turned on first.</p>' +
     '<p class="jp-note">Judges who are off are hidden from the Recorder and Red Cards tabs and from exports, and their red cards are not counted. Their entries are kept if you turn them back on.</p>' +
     '<p class="jp-note">AC1 and AC2 are optional. They only enter DQ notifications, which appear with the Chief Judge&rsquo;s and are marked AC1 or AC2. They never appear on the Recorder or Red Cards tabs or in exports.</p>' +
     '<p class="jp-note">PZM is the Penalty Zone Manager. It can be turned on once Penalty Zone is checked under Race format, and its QR code opens the Penalty Zone tab.</p></div>';
@@ -6795,6 +6798,7 @@ document.addEventListener('click', function(e){
       if (ro()) break;
       var tn = +b.dataset.n;
       if (isPZM(tn) && !usePZ()) break;                  // needs Penalty Zone turned on first
+      if (tn <= NMAIN && isActive(tn) && activeList().length <= MIN_JUDGES) { toast('At least ' + MIN_JUDGES + ' judges are required for a race.'); break; }   // even if forced through (stale-render edge case)
       S.event.active[tn - 1] = isPZM(tn) ? S.event.active[tn - 1] !== true : !isActive(tn);
       queueRace(200); render();
       break;
