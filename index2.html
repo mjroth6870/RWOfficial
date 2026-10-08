@@ -3014,6 +3014,25 @@ var qrcode = function() {
     function last(p){ return p.split('/').pop(); }
     // A refused write or read arrives as the codes the app already understands.
     function mapErr(e){ var c = e && e.code; if (c === 'permission-denied' || c === 'unauthenticated' || c === 'firestore/permission-denied') { var m = new Error(e.message || 'denied'); m.code = 'invalid_argument'; return m; } return e; }
+    // Firebase Auth's own error codes for email/password sign-up, sign-in, and password reset -- turned into a
+    // message the sign-in screen can show directly, without leaking whether a given email has an account (the
+    // reset-password flow uses the same message either way, on purpose).
+    function mapAuthErr(e){
+      var c = (e && e.code) || '';
+      var msg = ({
+        'auth/email-already-in-use': 'An account with that email already exists. Try signing in with a password instead, or use the emailed link.',
+        'auth/weak-password': 'That password is too short. Use at least 6 characters.',
+        'auth/invalid-email': 'Enter a valid email address.',
+        'auth/missing-password': 'Enter a password.',
+        'auth/wrong-password': 'That email and password do not match. Check them and try again.',
+        'auth/invalid-credential': 'That email and password do not match. Check them and try again.',
+        'auth/user-not-found': 'No password is set for that email address yet. Create an account, or use the emailed link instead.',
+        'auth/too-many-requests': 'Too many attempts. Wait a bit and try again.',
+        'auth/network-request-failed': 'Could not reach the server. Check the connection and try again.'
+      })[c];
+      var m = new Error(msg || 'Something went wrong. Try again.'); m.code = c; m.friendly = msg || 'Something went wrong. Try again.';
+      return m;
+    }
     function load(){
       if (A) return A;
       var sdkP = window.__rwoSdk ? Promise.resolve(window.__rwoSdk)
@@ -3063,12 +3082,23 @@ var qrcode = function() {
     var userApi = {
       can: function(){ return Promise.resolve(true); },          // the security rules decide what is allowed
       id: function(){ return load().then(function(a){ return a.auth.currentUser ? a.auth.currentUser.uid : null; }); },
-      me: function(){ return load().then(function(a){ var u = a.auth.currentUser; return {id:u ? u.uid : null, name:(u && u.displayName) || '', email:(u && u.email) || null, avatarUrl:(u && u.photoURL) || '', color:'#5b6b7b', isAnonymous:!!(u && u.isAnonymous), isOwner:false, canEdit:false}; }); },
+      me: function(){ return load().then(function(a){ var u = a.auth.currentUser; return {id:u ? u.uid : null, name:(u && u.displayName) || '', email:(u && u.email) || null, avatarUrl:(u && u.photoURL) || '', color:'#5b6b7b', isAnonymous:!!(u && u.isAnonymous), hasPassword:!!(u && u.providerData && u.providerData.some(function(p){ return p.providerId === 'password'; })), isOwner:false, canEdit:false}; }); },
       auth: {
         kind: 'firebase',
         sendLink: function(email){
           return load().then(function(a){ return a.sdk.auth.sendSignInLinkToEmail(a.auth, email, {url: location.origin + location.pathname, handleCodeInApp:true}); })
             .then(function(){ try { localStorage.setItem(EMAIL_KEY, email); } catch(e){} });
+        },
+        signUpPassword: function(email, password){
+          return load().then(function(a){ return a.sdk.auth.createUserWithEmailAndPassword(a.auth, email, password); })
+            .then(function(cred){ return cred.user.uid; }, function(e){ throw mapAuthErr(e); });
+        },
+        signInPassword: function(email, password){
+          return load().then(function(a){ return a.sdk.auth.signInWithEmailAndPassword(a.auth, email, password); })
+            .then(function(cred){ return cred.user.uid; }, function(e){ throw mapAuthErr(e); });
+        },
+        resetPassword: function(email){
+          return load().then(function(a){ return a.sdk.auth.sendPasswordResetEmail(a.auth, email); }).catch(function(e){ throw mapAuthErr(e); });
         },
         signInGuest: function(){ return load().then(function(a){ return a.auth.currentUser ? null : a.sdk.auth.signInAnonymously(a.auth); }); },
         signOut: function(){ return load().then(function(a){ return a.sdk.auth.signOut(a.auth); }); }
@@ -3219,6 +3249,7 @@ var S = {
   copySrc: '',                   // race chosen in "Copy officials from"
   standalone: false,             // running on an ordinary web host with Firebase, not inside Claude
   linkSent: '',                  // the email address a sign-in link was just sent to
+  authTab: 'link',               // which sign-in method is shown: 'link' (emailed link), 'in' (password), or 'create' (set a password)
   board: false,                  // this device is showing the DQ Board, not the normal app
   pendingBoard: null,             // a DQ Board link waiting for the meet to load
   dqOpen: false,                  // the DQ Board link panel open on Setup
@@ -3813,7 +3844,7 @@ function readCollection(path){
 }
 async function startAccounts(u, uid){
   ME = {id:uid, name:'', email:null, avatarUrl:'', anon:false};
-  if (uid && typeof u.me === 'function') { try { var m = await u.me(); ME = {id:uid, name:m.name || '', email:m.email || null, avatarUrl:m.avatarUrl || '', anon:!!m.isAnonymous}; } catch(e){} }
+  if (uid && typeof u.me === 'function') { try { var m = await u.me(); ME = {id:uid, name:m.name || '', email:m.email || null, avatarUrl:m.avatarUrl || '', anon:!!m.isAnonymous, hasPassword:!!m.hasPassword}; } catch(e){} }
   S.ready = true; S.booted = true; clearTimeout(bailT);
   if (S.pendingBoard) {
     if (!uid) { S.acct = {uid:null}; if (!(await ensureGuest())) { S.pendingBoard = null; S.board = false; S.screen = 'signin'; render(); return; } uid = S.acct.uid; }
@@ -4123,7 +4154,7 @@ function acctCardHTML(){
 function signupHTML(){
   var em = ME && ME.email;
   return '<div class="home"><section class="band"><h2 class="sec-h">Create your account</h2>' +
-    '<p class="lead">Accounts use your sign-in, so there is no password to set up.</p>' + acctCardHTML() +
+    '<p class="lead">' + (ME.hasPassword ? 'You already set a password when you signed in.' : 'Accounts use your sign-in, so there is no password to set up.') + '</p>' + acctCardHTML() +
     '<p class="off-note">' + (em ? 'This email address is your account. The app reads it from your sign-in each time you visit and does not store it.' : 'Your organization does not share email addresses with this page, so your account is tied to your sign-in instead.') + '</p>' +
     '<div class="toolbar"><button class="btn primary" data-act="signup"' + (S.canWrite ? '' : ' disabled') + '>Create my account</button></div>' +
     '<p class="off-note">With an account you can set up your own meets, and your previous meets are archived.</p></section>' +
@@ -4132,9 +4163,28 @@ function signupHTML(){
 }
 function signinHTML(){
   if (!S.standalone) return '<div class="home"><section class="band"><h2 class="sec-h">Sign in to continue</h2><p class="lead">This page could not tell who you are. Sign in, then reload this page.</p></section></div>';
-  return '<div class="home"><section class="band"><h2 class="sec-h">Sign in</h2>' + (S.linkSent
-    ? '<p class="lead">Check your inbox.</p><p class="off-note">We sent a sign-in link to <b>' + esc(S.linkSent) + '</b>. Open it on this device to finish. It can take a minute and may land in spam.</p><div class="toolbar"><button class="btn" data-act="link-again">Use a different email</button></div>'
-    : '<p class="lead">Organizers sign in with an email address. We email you a link, so there is no password.</p><label class="dlg-l" for="si-email">Email address</label><input id="si-email" class="qr-link" type="email" autocomplete="email" placeholder="you@example.org"><div class="toolbar"><button class="btn primary" data-act="send-link">Email me a sign-in link</button></div>') + '</section>' +
+  var tab = S.linkSent ? 'link' : (S.authTab || 'link');
+  var tabsHtml = S.linkSent ? '' : '<div class="toolbar">' + [['link', 'Email link'], ['in', 'Sign in with a password'], ['create', 'Create a password']].map(function(t){
+    return '<button type="button" class="btn sm' + (tab === t[0] ? ' primary' : '') + '" data-act="auth-tab" data-v="' + t[0] + '" aria-pressed="' + (tab === t[0]) + '">' + t[1] + '</button>';
+  }).join('') + '</div>';
+  var body;
+  if (S.linkSent) {
+    body = '<p class="lead">Check your inbox.</p><p class="off-note">We sent a sign-in link to <b>' + esc(S.linkSent) + '</b>. Open it on this device to finish. It can take a minute and may land in spam.</p><div class="toolbar"><button class="btn" data-act="link-again">Use a different email</button></div>';
+  } else if (tab === 'create') {
+    body = '<p class="lead">Set a password instead of using an emailed link.</p>' +
+      '<label class="dlg-l" for="si-email">Email address</label><input id="si-email" class="qr-link" type="email" autocomplete="email" placeholder="you@example.org">' +
+      '<label class="dlg-l" for="si-pw">Password</label><input id="si-pw" class="qr-link" type="password" autocomplete="new-password" placeholder="At least 6 characters">' +
+      '<label class="dlg-l" for="si-pw2">Confirm password</label><input id="si-pw2" class="qr-link" type="password" autocomplete="new-password" placeholder="Type it again">' +
+      '<div class="toolbar"><button class="btn primary" data-act="pw-create">Create account</button></div>';
+  } else if (tab === 'in') {
+    body = '<p class="lead">Sign in with the email and password you set up.</p>' +
+      '<label class="dlg-l" for="si-email">Email address</label><input id="si-email" class="qr-link" type="email" autocomplete="email" placeholder="you@example.org">' +
+      '<label class="dlg-l" for="si-pw">Password</label><input id="si-pw" class="qr-link" type="password" autocomplete="current-password" placeholder="Your password">' +
+      '<div class="toolbar"><button class="btn primary" data-act="pw-signin">Sign in</button><button type="button" class="btn sm" data-act="pw-forgot">Forgot password?</button></div>';
+  } else {
+    body = '<p class="lead">We email you a link, so there is no password to remember.</p><label class="dlg-l" for="si-email">Email address</label><input id="si-email" class="qr-link" type="email" autocomplete="email" placeholder="you@example.org"><div class="toolbar"><button class="btn primary" data-act="send-link">Email me a sign-in link</button></div>';
+  }
+  return '<div class="home"><section class="band"><h2 class="sec-h">Sign in</h2>' + tabsHtml + body + '</section>' +
     '<section class="band"><h2 class="sec-h">Officiating a race?</h2><p class="off-note">You do not need to sign in. Scan the QR code the Recorder gave you, or type its code.</p><div class="toolbar"><button class="btn" data-act="code-dialog">Enter official code</button></div></section>' +
     '<section class="band"><h2 class="sec-h">Watching from a screen?</h2><p class="off-note">The DQ Board needs no account. Type the meet code shown on its Setup tab.</p><div class="toolbar"><button class="btn" data-act="board-code-dialog">View a DQ Board</button></div></section></div>';
 }
@@ -5048,7 +5098,7 @@ function howtoHTML(){
     '</ul></details>' +
 
     '<details class="rule"><summary><h3>' + ICON_CHEV + 'Your account and meets<small>My meets</small></h3></summary><ul>' +
-      '<li>Sign in with an email address (you are emailed a link) and choose Create my account. There is no password. Your account is tied to your sign-in, and if your organization shares email addresses with this page, yours is shown but never stored.</li>' +
+      '<li>Sign in with an email address, either by an emailed link or by setting a password, then choose Create my account. Your account is tied to your sign-in, and if your organization shares email addresses with this page, yours is shown but never stored.</li>' +
       '<li>Each account sets up its own meets. Only the account that created a meet can change its setup. Use My meets at the left of the tabs to switch meets.</li>' +
       '<li>When you start a new meet, your previous meets are archived, unless you untick that option. Archived meets are read-only, for everyone including officials, and can be exported or restored at any time.</li>' +
       '<li>Officials do not need an account. They scan the QR code on their judge tab, or type its code.</li>' +
@@ -6757,6 +6807,31 @@ document.addEventListener('click', function(e){
       break;
     }
     case 'link-again': S.linkSent = ''; render(); break;
+    case 'auth-tab': S.authTab = b.dataset.v; render(); break;
+    case 'pw-create': {
+      var emC = ($('#si-email') || {}).value || ''; emC = emC.trim();
+      var pwC = ($('#si-pw') || {}).value || '', pwC2 = ($('#si-pw2') || {}).value || '';
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(emC)) { toast('Enter a valid email address.'); break; }
+      if (pwC.length < 6) { toast('Use a password with at least 6 characters.'); break; }
+      if (pwC !== pwC2) { toast('The two passwords do not match.'); break; }
+      U.auth.signUpPassword(emC, pwC).then(function(uid){ return startAccounts(U, uid); }, function(e){ toast(e.friendly || 'Could not create that account.'); });
+      break;
+    }
+    case 'pw-signin': {
+      var emI = ($('#si-email') || {}).value || ''; emI = emI.trim();
+      var pwI = ($('#si-pw') || {}).value || '';
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(emI)) { toast('Enter a valid email address.'); break; }
+      if (!pwI) { toast('Enter your password.'); break; }
+      U.auth.signInPassword(emI, pwI).then(function(uid){ return startAccounts(U, uid); }, function(e){ toast(e.friendly || 'Could not sign in.'); });
+      break;
+    }
+    case 'pw-forgot': {
+      var emF = ($('#si-email') || {}).value || ''; emF = emF.trim();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(emF)) { toast('Enter your email address first.'); break; }
+      // Always the same message, whether or not that address actually has a password-based account, so this cannot be used to check who has signed up.
+      U.auth.resetPassword(emF).then(function(){ toast('If that email has a password set, a reset link was sent.'); }, function(){ toast('If that email has a password set, a reset link was sent.'); });
+      break;
+    }
     case 'sign-out': signOutNow(); break;
     case 'new-meet': if (S.canWrite && !S.suspended) openNewMeetDialog(); break;
     case 'open-meet': if (S.acct) { LS.set(KEY + 'official', ''); openMeet(S.acct.uid, b.dataset.id); } break;
