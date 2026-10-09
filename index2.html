@@ -189,13 +189,14 @@ main{padding:0 16px 56px}
 .dq-id-opt{margin-top:6px}
 .dq-id-note{margin-top:2px}
 .board{height:100dvh;box-sizing:border-box;padding:28px 32px 20px;background:var(--bg);color:var(--ink);display:flex;flex-direction:column;overflow:hidden}
-.board-head{margin-bottom:26px}
-.board-brand{display:flex;align-items:flex-start;gap:14px}
-.board-logo{flex:none;height:clamp(28px,4vw,52px);width:auto;margin-top:2px}      /* matches the h1's own clamp(), so the logo is always exactly as tall as "DQ Board" */
-.board-head h1{margin:0 0 4px;font:800 clamp(28px,4vw,52px)/1 var(--cond);letter-spacing:.02em}
-.board-by{font-size:clamp(13px,1.3vw,18px);color:var(--muted);margin-bottom:4px}
+.board-head{margin-bottom:18px}
+.board-brand{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.board-logo{flex:none;height:clamp(28px,4vw,52px);width:auto}      /* matches the h1's own clamp(), so the logo is always exactly as tall as "DQ Board" */
+.board-head h1{margin:0;font:800 clamp(28px,4vw,52px)/1 var(--cond);letter-spacing:.02em}
+.board-meta{flex:none;display:flex;flex-direction:column;justify-content:center;gap:2px;padding-left:14px;border-left:1px solid var(--line)}      /* beside "DQ Board" now, not stacked under the logo, to keep the header short */
+.board-by{font-size:clamp(12px,1.1vw,16px);color:var(--muted)}
 .board-by-site{white-space:nowrap}
-.board-sub{font-size:clamp(15px,1.6vw,22px);color:var(--muted)}
+.board-sub{font-size:clamp(13px,1.3vw,18px);color:var(--muted)}
 .board-msg{margin-top:18vh;font-size:clamp(20px,3vw,32px);text-align:center;color:var(--muted)}
 .board-head{flex:none}
 .board-list{flex:1 1 auto;min-height:0;display:grid;grid-auto-flow:column;
@@ -4976,7 +4977,8 @@ function boardHTML(){
   return boardShell(
     '<div class="board-head"><div class="board-brand">' +
       '<svg class="board-logo" viewBox="4 -2 212 172" aria-hidden="true"><circle cx="56" cy="50" r="50" fill="var(--yellow)" stroke="var(--ink)" stroke-width="2.2"/><path d="M 28 20 H 87 V 37.5 H 45.5 V 80 H 28 Z" fill="var(--ink)"/><circle cx="164" cy="50" r="50" fill="var(--yellow)" stroke="var(--ink)" stroke-width="2.2"/><path d="M 131 47 C 137 28 150 20 158 27 C 166 34 169 54 177 60 C 185 66 193 61 199 49" fill="none" stroke="var(--ink)" stroke-width="15.5"/><circle cx="110" cy="118" r="50" fill="var(--red)" stroke="var(--ink)" stroke-width="2.2"/></svg>' +
-      '<div><h1>DQ Board</h1><div class="board-by">Race Walk Officiating <span class="board-by-site">by WalkJudge.com</span></div>' +
+      '<h1>DQ Board</h1>' +
+      '<div class="board-meta"><div class="board-by">Race Walk Officiating <span class="board-by-site">by WalkJudge.com</span></div>' +
       '<div class="board-sub">' + (esc(meet.name) || 'Race Walk Officiating') + (meet.date ? ' &middot; ' + esc(fmtDate(meet.date)) : '') + (heat ? ' &middot; ' + esc(heat) : '') + '</div></div>' +
     '</div></div>' +
     (rows.length ? '<div class="board-list" aria-label="' + esc(label) + ' and red cards">' + items + '</div>' : '<p class="board-msg">No athletes are entered for this race yet.</p>')
