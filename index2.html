@@ -6168,7 +6168,7 @@ function buildPDF(JS, kind, paper){
   }
   function drawTitle(grp){
     doc.addImage(LOGO_PNG, 'PNG', M, M - 5, LOGO_W, LOGO_H);
-    setF(false, 8.5, PC.muted); left('Race Walk Officiating', TX, M + 6);
+    setF(false, 8.5, PC.muted); left('Race Walk Officiating by WalkJudge.com', TX, M + 6);
     setF(true, 17, PC.ink);
     var tt = isRC ? 'Red Cards' : 'Recorder', ttw = doc.getTextWidth(tt);
     left(tt, TX, M + 24);
@@ -6423,7 +6423,7 @@ function buildPZPDF(JS, paper){
 
   function drawTitle(){
     doc.addImage(LOGO_PNG, 'PNG', M, M - 5, LOGO_W, LOGO_H);
-    setF(false, 8.5, PC.muted); left('Race Walk Officiating', TX, M + 6);
+    setF(false, 8.5, PC.muted); left('Race Walk Officiating by WalkJudge.com', TX, M + 6);
     setF(true, 17, PC.ink); var tt = 'Penalty Zone', ttw = doc.getTextWidth(tt); left(tt, TX, M + 24);   // measured at the title's own size, before the smaller race name changes the font
     if (inHeats()) { setF(true, 11, PC.muted); left(fit(raceLabel(S.raceId), PW - TX - M - ttw - 24 - 190), TX + ttw + 24, M + 24); }
     if (evName) { setF(true, 14, PC.ink); doc.text(evName, PW - M, M + 10, {align:'right', baseline:'middle'}); }
@@ -6539,7 +6539,7 @@ function buildTimerPDF(JS){
 
   function drawTitle(){
     doc.addImage(LOGO_PNG, 'PNG', M, M - 5, LOGO_W, LOGO_H);
-    setF(false, 8.5, PC.muted); left('Race Walk Officiating', TX, M + 6);
+    setF(false, 8.5, PC.muted); left('Race Walk Officiating by WalkJudge.com', TX, M + 6);
     setF(true, 16, PC.ink); left('Timer DQ & PZ Notification', TX, M + 24);
     if (evName) { setF(true, 13, PC.ink); doc.text(evName, PW - M, M + 10, {align:'right', baseline:'middle'}); }
     if (inHeats()) { setF(true, 10, PC.muted); doc.text(fit(raceLabel(S.raceId), 240), PW - M, M + 24, {align:'right', baseline:'middle'}); }
