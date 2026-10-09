@@ -3176,6 +3176,13 @@ function str(v){ return v == null ? '' : String(v); }
 function toInt(v, lo, hi, d){ var n = parseInt(v, 10); return isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d; }
 function digits(v){ return str(v).replace(/\D/g, '').slice(0, 6); }
 function uid(){ return 'a' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+// A small, append-only record of why an account went read-only or was suspended/unsuspended, kept under that
+// account's own accounts/{uid}/errlog so an admin can look back at it later -- best-effort only: a failure to
+// write the log entry itself is never allowed to surface as a user-facing error.
+function logAccountEvent(acctUid, kind, detail){
+  if (!db || !acctUid) return;
+  try { db.doc('accounts/' + acctUid + '/errlog/' + uid()).set({at:new Date().toISOString(), kind:kind, detail:str(detail || '')}).catch(function(){}); } catch(e){}
+}
 function sleep(ms){ return new Promise(function(r){ setTimeout(r, ms); }); }
 function jparse(s){ try { return JSON.parse(s); } catch(e){ return null; } }
 function stable(o){
@@ -3259,6 +3266,7 @@ var S = {
   adminSearch: '',
   adminSel: null,                 // the uid of the account currently open in the admin screen, if any
   adminSelMeets: null,             // that account's meets, once loaded
+  adminSelErrlog: null,             // that account's recent read-only/suspension log entries, once loaded
   adminAdmins: null,               // (Firebase) every other admin's uid, for the admin management list
   suspended: false,                // this account has been suspended by an admin: read-only everywhere, even its own meets
   fromAdmin: false,                // this meet was opened from the admin screen; the back button should return there, not to My meets
@@ -3658,6 +3666,7 @@ async function run(key){
         if (err && err.code === 'invalid_argument') {
           S.canWrite = false; s.dirty = false; S.save = 'idle';
           toast('This view is read-only, so changes were not saved.');
+          if (S.acct && S.acct.uid) logAccountEvent(S.acct.uid, 'write_denied', 'A save on ' + key + ' was denied.');
           render();
           break;
         }
@@ -3722,7 +3731,7 @@ function announcePresence(raceId, n){
 }
 function unsubRace(){ raceSubs.forEach(function(f){ try { f(); } catch(e){} }); raceSubs = []; }
 function subErr(err){
-  if (err && err.code === 'revoked') { S.canWrite = false; toast('Access to this page changed. It is now read-only.'); }
+  if (err && err.code === 'revoked') { S.canWrite = false; toast('Access to this page changed. It is now read-only.'); if (S.acct && S.acct.uid) logAccountEvent(S.acct.uid, 'revoked', 'Write access was revoked mid-session.'); }
   if (!S.ready) { S.ready = true; S.booted = true; clearTimeout(bailT); }
   render();
 }
@@ -3868,7 +3877,7 @@ async function signOutNow(){
   if (mySub) { try { mySub(); } catch(e){} mySub = null; }
   if (adminSub) { try { adminSub(); } catch(e){} adminSub = null; }
   if (suspSub) { try { suspSub(); } catch(e){} suspSub = null; }
-  S.isAdmin = false; S.adminAccounts = null; S.adminSel = null; S.adminSelMeets = null; S.adminAdmins = null; S.suspended = false; S.fromAdmin = false;
+  S.isAdmin = false; S.adminAccounts = null; S.adminSel = null; S.adminSelMeets = null; S.adminSelErrlog = null; S.adminAdmins = null; S.suspended = false; S.fromAdmin = false;
   S.screen = 'signin'; try { if (location.hash) location.hash = ''; } catch(e){}
   render();
 }
@@ -4195,10 +4204,10 @@ function meetCardHTML(m, archived){
     '<button class="btn" data-act="' + (archived ? 'restore-meet' : 'archive-meet') + '" data-id="' + esc(m.id) + '"' + (S.canWrite && !S.suspended ? '' : ' disabled') + '>' + (archived ? 'Restore' : 'Archive') + '</button></div></li>';
 }
 /* ---------- Admin screen: every account, and (Firebase) who else is an admin ---------- */
-var adminAccSub = null, adminMeetsSub = null, adminAdminsSub = null;
+var adminAccSub = null, adminMeetsSub = null, adminAdminsSub = null, adminErrlogSub = null;
 function goAdmin(){
   if (!S.isAdmin) return;
-  S.screen = 'admin'; S.adminSel = null; S.adminSelMeets = null;
+  S.screen = 'admin'; S.adminSel = null; S.adminSelMeets = null; S.adminSelErrlog = null;
   if (!adminAccSub) {
     try {
       adminAccSub = db.collection('accounts').onSnapshot(function(sn){
@@ -4219,12 +4228,18 @@ function goAdmin(){
   render();
 }
 function adminBack(){
-  if (S.adminSel) { S.adminSel = null; S.adminSelMeets = null; if (adminMeetsSub) { try { adminMeetsSub(); } catch(e){} adminMeetsSub = null; } render(); return; }
+  if (S.adminSel) {
+    S.adminSel = null; S.adminSelMeets = null; S.adminSelErrlog = null;
+    if (adminMeetsSub) { try { adminMeetsSub(); } catch(e){} adminMeetsSub = null; }
+    if (adminErrlogSub) { try { adminErrlogSub(); } catch(e){} adminErrlogSub = null; }
+    render(); return;
+  }
   S.screen = 'home'; render();
 }
 function adminOpenAccount(uid){
-  S.adminSel = uid; S.adminSelMeets = null;
+  S.adminSel = uid; S.adminSelMeets = null; S.adminSelErrlog = null;
   if (adminMeetsSub) { try { adminMeetsSub(); } catch(e){} adminMeetsSub = null; }
+  if (adminErrlogSub) { try { adminErrlogSub(); } catch(e){} adminErrlogSub = null; }
   try {
     adminMeetsSub = db.collection('cfg/' + uid + '/meets').onSnapshot(function(sn){
       S.adminSelMeets = sn.docs.map(function(d){ var x = d.data() || {}; return {id:d.id, name:str(x.name), date:str(x.date), created:str(x.created), archived:x.archived === true, archivedAt:str(x.archivedAt), code:str(x.code)}; })
@@ -4232,6 +4247,13 @@ function adminOpenAccount(uid){
       if (S.adminSel === uid) render();
     }, function(){ S.adminSelMeets = []; if (S.adminSel === uid) render(); });
   } catch(e){ S.adminSelMeets = []; }
+  try {
+    adminErrlogSub = db.collection('accounts/' + uid + '/errlog').onSnapshot(function(sn){
+      S.adminSelErrlog = sn.docs.map(function(d){ var x = d.data() || {}; return {id:d.id, at:str(x.at), kind:str(x.kind), detail:str(x.detail)}; })
+        .sort(function(a, b){ return (b.at || '').localeCompare(a.at || ''); }).slice(0, 20);
+      if (S.adminSel === uid) render();
+    }, function(){ S.adminSelErrlog = []; if (S.adminSel === uid) render(); });
+  } catch(e){ S.adminSelErrlog = []; }
   render();
 }
 async function adminSetAdmin(uid, on){
@@ -4249,6 +4271,7 @@ async function adminSetSuspended(uid, on){
     d.suspended = !!on;
     await db.doc('accounts/' + uid).set(d);
   } catch(e){ toast('That change could not be saved.'); return; }
+  logAccountEvent(uid, on ? 'suspended' : 'unsuspended', 'By admin ' + (S.acct ? S.acct.uid : '?') + '.');
   toast(on ? 'Account suspended.' : 'Suspension lifted.');
 }
 // Archiving or restoring another account's meet, or resetting its official codes, from the admin screen. These write
@@ -4300,7 +4323,29 @@ function adminDetailHTML(){
     (meets === null ? '<p class="off-note">Loading their meets&hellip;</p>' :
       (meets.length ? '<h3 class="pz-h">Active <span class="count">' + act.length + '</span></h3>' + (act.length ? '<ul class="mlist">' + act.map(row).join('') + '</ul>' : '<p class="off-note">None.</p>') +
         '<h3 class="pz-h">Archived <span class="count">' + arc.length + '</span></h3>' + (arc.length ? '<ul class="mlist arch">' + arc.map(row).join('') + '</ul>' : '<p class="off-note">None.</p>')
-      : '<p class="off-note">This account has no meets.</p>')) + '</section>';
+      : '<p class="off-note">This account has no meets.</p>')) + '</section>' + adminErrlogHTML();
+}
+// Why this account went read-only, or was suspended/unsuspended, most recent first -- the most recent 20 entries;
+// older ones are not deleted automatically, but an admin can clear them below.
+function adminErrlogHTML(){
+  var KIND_LABEL = {write_denied:'Write denied', revoked:'Access revoked', suspended:'Suspended', unsuspended:'Suspension lifted'};
+  var log = S.adminSelErrlog;
+  var row = function(e){
+    return '<li class="mcard"><div class="mc-main"><b class="mc-name">' + esc(KIND_LABEL[e.kind] || e.kind || 'Event') + '</b>' +
+      '<span class="mc-sub">' + (e.at ? esc(new Date(e.at).toLocaleString()) : 'Unknown time') + (e.detail ? ' &middot; ' + esc(e.detail) : '') + '</span></div></li>';
+  };
+  return '<section class="band"><div class="home-h"><h2 class="sec-h">Access log</h2>' +
+    (log && log.length ? '<div class="mc-act"><button class="btn sm" data-act="admin-clear-errlog" data-id="' + esc(S.adminSel) + '"' + (S.canWrite ? '' : ' disabled') + '>Clear log</button></div>' : '') + '</div>' +
+    '<p class="off-note">When this account went read-only, or was suspended or unsuspended, most recent first.</p>' +
+    (log === null ? '<p class="off-note">Loading&hellip;</p>' : (log.length ? '<ul class="mlist">' + log.map(row).join('') + '</ul>' : '<p class="off-note">Nothing on record.</p>')) + '</section>';
+}
+async function adminClearErrlog(uid){
+  if (!S.isAdmin) return;
+  var entries = (S.adminSelErrlog || []).slice();
+  if (!entries.length) return;
+  try { await Promise.all(entries.map(function(e){ return db.doc('accounts/' + uid + '/errlog/' + e.id).delete(); })); }
+  catch(e){ toast('That could not be cleared.'); return; }
+  toast('Log cleared.');
 }
 function adminHTML(){
   if (!S.isAdmin) return '<div class="home"><p class="lead">You do not have admin access.</p></div>';
@@ -6794,6 +6839,7 @@ document.addEventListener('click', function(e){
       else adminSetSuspended(b.dataset.id, false);
       break;
     }
+    case 'admin-clear-errlog': confirmDlg('Clear this account\u2019s access log?', 'This removes what is currently shown. It cannot be undone.', 'Clear log', function(){ adminClearErrlog(b.dataset.id); }); break;
     case 'admin-archive-meet': confirmDlg('Archive ' + esc(b.dataset.name) + '?', 'It becomes read-only for everyone, including officials. It can be restored at any time.', 'Archive meet', function(){ adminArchiveMeet(b.dataset.uid, b.dataset.id, true); }); break;
     case 'admin-restore-meet': adminArchiveMeet(b.dataset.uid, b.dataset.id, false); break;
     case 'admin-reset-codes': confirmDlg('Create new codes?', 'This replaces the code for every official on this meet. Every earlier QR code and typed code stops working, including on devices using one right now.', 'Create new codes', function(){ adminResetCodes(b.dataset.uid, b.dataset.id); }); break;
