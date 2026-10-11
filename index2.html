@@ -427,6 +427,13 @@ thead .cin{font-weight:600;height:100%;text-align:center;color:var(--ink)}
 .jsum{color:var(--muted);font-weight:500;margin:0 0 10px}
 .jsum b{color:var(--ink)}
 .jlist{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.jtable{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:8px;margin:0}
+.jt-row.open{grid-column:1 / -1}
+.jt-btn{width:100%;height:56px;border-radius:10px;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);font:800 20px var(--cond);cursor:pointer}
+.jt-btn.jt-y{background:var(--yellow);border-color:var(--yellow);color:var(--on-yellow)}
+.jt-btn.jt-r{background:var(--red);border-color:var(--red);color:var(--on-red)}
+.jt-panel{margin-top:8px;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);display:grid;gap:10px}
+.jt-name{margin:0;font-weight:700;color:var(--muted);font-size:13px}
 .jrow{display:grid;grid-template-columns:minmax(240px,1.3fr) repeat(2,minmax(136px,1fr)) minmax(184px,1.1fr) minmax(136px,1fr);gap:8px 12px;align-items:end;padding:10px 12px 12px 14px;background:var(--surface);border:1px solid var(--line);border-left:7px solid var(--line-strong);border-radius:10px}
 .jrow.has-y{border-left-color:var(--yellow)}
 .jrow.has-rc{border-left-color:var(--red);background:var(--red-wash)}
@@ -3206,6 +3213,35 @@ function nowNum(){ var d = new Date(); return String(d.getHours() * 100 + d.getM
 // A stored time digit-string (HHMM or HHMMSS) as HH:MM or HH:MM:SS, for a confirmation message -- the fields
 // themselves keep showing the plain digits, unchanged, since that is the existing, familiar way of typing one.
 function fmtEnt(v){ v = digits(v); if (!v) return ''; if (v.length <= 4) { v = v.padStart(4, '0'); return v.slice(0, 2) + ':' + v.slice(2); } return v.slice(0, 2) + ':' + v.slice(2, 4) + ':' + v.slice(4); }
+// Seconds since midnight for a raw stored time value (HHMM or HHMMSS, not necessarily zero-padded) -- comparable
+// across the two lengths, unlike comparing the raw digit strings or numbers directly (a 6-digit HHMMSS value can be
+// numerically larger than a 4-digit HHMM value even when it falls earlier in the same day).
+function entSeconds(v){
+  v = digits(v);
+  if (!v) return -1;
+  if (v.length <= 4) { v = v.padStart(4, '0'); return (+v.slice(0, 2)) * 3600 + (+v.slice(2)) * 60; }
+  v = v.padStart(6, '0'); return (+v.slice(0, 2)) * 3600 + (+v.slice(2, 4)) * 60 + (+v.slice(4, 6));
+}
+// Which color a judge's compact Table-view button should show for one athlete: the color of whichever call --
+// a yellow paddle (y1/y2) or the red card (rc, using its own auto-stamped time, rt) -- was entered most recently.
+// Primarily chronological, not a severity ranking, so correcting an earlier mistaken paddle after a later one does
+// not make the button look more serious than it should -- except that stored times are only precise to the minute,
+// so two calls given seconds apart often land on the exact same value; a tie goes to the red card, since it is the
+// more serious, more definitive of the two rather than an arbitrary pick.
+function lastCallColor(e){
+  var cands = [];
+  if (e.y1) cands.push({c:'y', t:entSeconds(e.y1)});
+  if (e.y2) cands.push({c:'y', t:entSeconds(e.y2)});
+  if (e.rc) cands.push({c:'r', t:e.rt ? entSeconds(e.rt) : -1});
+  if (!cands.length) return '';
+  var best = cands[0];
+  cands.forEach(function(c){ if (c.t > best.t || (c.t === best.t && c.c === 'r')) best = c; });
+  return best.c;
+}
+// Whether this judge has yellow-paddle/red-card fields at all, and so whether the List/Table view toggle makes
+// sense to offer: AC1/AC2 only ever enter DQ notifications, and a supervisory Chief Judge's sheet (chiefSheet)
+// has no standard calls of its own either -- both would show an empty Table view with nothing to tap.
+function canTableView(n){ return !isAC(n) && !chiefSheet(n); }
 function todayISO(){
   var d = new Date(), p = function(n){ return (n < 10 ? '0' : '') + n; };
   return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
@@ -3262,6 +3298,8 @@ var S = {
   standalone: false,             // running on an ordinary web host with Firebase, not inside Claude
   linkSent: '',                  // the email address a sign-in link was just sent to
   authTab: 'link',               // which sign-in method is shown: 'link' (emailed link), 'in' (password), or 'create' (set a password)
+  tableView: false,              // a judge's chosen view on their own tab: list (every call always visible) or the compact Table view; restored from localStorage at startup
+  tableOpen: null,               // which athlete's row is expanded in Table view, if any -- an accordion, so at most one at a time
   board: false,                  // this device is showing the DQ Board, not the normal app
   pendingBoard: null,             // a DQ Board link waiting for the meet to load
   dqOpen: false,                  // the DQ Board link panel open on Setup
@@ -4896,6 +4934,7 @@ function go(id, fromHash){
   if (S.official && id !== 'howto' && id !== tabFor(S.official)) id = tabFor(S.official);
   var changed = id !== S.tab;
   S.tab = id;
+  S.tableOpen = null;   // a Table-view row left open on one judge's tab should not appear open on another's
   LS.set(KEY + 'tab', id);
   if (!fromHash) { try { var hh = hashFor(id); if (location.hash !== '#' + hh) location.hash = hh; } catch(e){} }
   render();
@@ -5625,8 +5664,11 @@ function judgeHTML(n){
     (raceOpen() ? '' : '<p class="banner ' + ST[raceStatus()].cls + '">This race is <b>' + ST[raceStatus()].label.toLowerCase() + '</b>. ' + (raceStatus() === 'closed' ? 'The Recorder can reopen it to make corrections.' : 'The Recorder opens it for updates when it starts.') + '</p>') +
     (isActive(n) ? '' : '<p class="banner">' + jtitle(n) + ' is not active in this race. The Recorder can turn this judge on under Judges in this race on the Setup tab.</p>') +
     '<div class="jtools"><input type="search" id="jq" data-f="jq" placeholder="Find an athlete by ' + orJoin((useHip() ? ['hip'] : []).concat(useBib() ? ['bib'] : [], ['name'])) + '" value="' + esc(S.filter) + '" aria-label="Find an athlete"></div>' +
+    (canTableView(n) ? '<div class="toolbar noprint"><button type="button" class="btn sm' + (S.tableView ? '' : ' primary') + '" data-act="jview" data-v="0" aria-pressed="' + !S.tableView + '">List</button><button type="button" class="btn sm' + (S.tableView ? ' primary' : '') + '" data-act="jview" data-v="1" aria-pressed="' + !!S.tableView + '">Table</button></div>' : '') +
     '<div class="jline"><p class="jsum" id="jsum">' + judgeSummary(n) + '</p></div>' +
-    '<ol class="jlist" id="jlist">' + judgeListHTML(n) + '</ol>' +
+    (canTableView(n) && S.tableView
+      ? '<div class="jtable" id="jtable">' + judgeTableHTML(n) + '</div>'
+      : '<ol class="jlist" id="jlist">' + judgeListHTML(n) + '</ol>') +
     '<div class="jclear"><button class="btn clear-entries" data-act="clear-judge" data-n="' + n + '"' + dis + '>Clear my entries</button></div></div>';
 }
 function qrPanelHTML(n){
@@ -5660,6 +5702,34 @@ function judgeListHTML(n){
   if (!list.length) return '<li class="empty">No athlete matches &ldquo;' + esc(S.filter) + '&rdquo;.</li>';
   return list.map(function(a){ return judgeRowHTML(n, a); }).join('');
 }
+// Table view: a compact grid of athlete number buttons, the same single number the DQ Board shows (whichever of
+// hip/bib it is set to). Tapping one expands just that athlete's yellow-paddle and red-card calls inline, in an
+// accordion -- opening one closes any other -- and confirming a call collapses it back to the button, now colored
+// to match whichever call was entered most recently. DQ notification, the Chief Judge's Last 100m red card, and
+// Time of day stay List-view-only; this view is only offered where canTableView(n) is true.
+function judgeTableHTML(n){
+  var q = S.filter.trim().toLowerCase();
+  var list = S.event.athletes.filter(function(a){
+    return !q || [useHip() ? a.hip : '', useBib() ? a.bib : '', a.name].some(function(x){ return str(x).toLowerCase().indexOf(q) >= 0; });
+  });
+  if (!S.event.athletes.length) return '<p class="empty">No athletes yet. The Recorder adds athletes on the Recorder tab.</p>';
+  if (!list.length) return '<p class="empty">No athlete matches &ldquo;' + esc(S.filter) + '&rdquo;.</p>';
+  return list.map(function(a){ return judgeTableRowHTML(n, a); }).join('');
+}
+function judgeTableRowHTML(n, a){
+  var e = getEntry(n, a.id), dis = lock(n) ? ' disabled' : '';
+  var color = lastCallColor(e), open = S.tableOpen === a.id;
+  var num = esc(str(boardId() === 'hip' ? a.hip : a.bib) || '\u2013');
+  var label = (esc(athTag(a)) + ' ' + esc(a.name || 'Unnamed athlete')).trim();
+  var btn = '<button type="button" class="jt-btn jt-' + (color || 'none') + '" data-act="jt-toggle" data-aid="' + a.id + '" aria-expanded="' + open + '" aria-label="' + label + '">' + num + '</button>';
+  var panel = open ? '<div class="jt-panel">' +
+    '<p class="jt-name">' + label + '</p>' +
+    timeField(n, a, 'y1', 'Yellow >', e.y1, 'y', !!e.y1Lock) + timeField(n, a, 'y2', 'Yellow ~', e.y2, 'y', !!e.y2Lock) +
+    segF(n, a, dis, 'rc', e.rc, 'Red card', '', !!e.rcLock) +
+    timeField(n, a, 'rt', 'Time of day', e.rt, 'r', e.rcLock ? 'passive' : false) +
+  '</div>' : '';
+  return '<div class="jt-row' + (open ? ' open' : '') + '" data-aid="' + a.id + '">' + btn + panel + '</div>';
+}
 function timeField(n, a, k, label, val, kind, locked){
   // locked is false/undefined (normal), true (this field is itself the locked call -- y1/y2 -- so its own stamp
   // button becomes the unlock control), or 'passive' (this field's time was recorded automatically with a locked
@@ -5692,30 +5762,32 @@ function dnFieldHTML(n, a, e){
   var f = timeField(n, a, 'dn', 'DQ notification', e.dn, 'n').replace('<div class="fld">', '<div class="fld f-dn">'), note = acNoteHTML(a.id);
   return note ? f.replace(/<\/div>$/, note + '</div>') : f;
 }
+// A red card selector: None, > or ~, saved to the field named by k (rc = the red card, lc = the Chief Judge's last
+// 100m card). A top-level function -- shared by the regular (list) row and the Table-view expanded panel -- rather
+// than one nested inside judgeRowHTML, so both call the exact same markup and there is only one place to change it.
+function segF(n, a, dis, k, cur, text, extra, locked){
+  var segDis = dis || (locked ? ' disabled' : '');
+  function b(v, label){
+    return '<button type="button" data-act="rc" data-k="' + k + '" data-n="' + n + '" data-aid="' + a.id + '" data-v="' + v + '" data-f="' + k + ':' + n + ':' + a.id + ':' + (v || 'none') + '" aria-pressed="' + (cur === v) + '"' + segDis + '>' + label + '</button>';
+  }
+  // A locked call gets its own small lock button beside the three options -- unlike those, it stays tappable (to
+  // unlock), since it is a different action from choosing one of the three, not one more of them.
+  var lockBtn = locked ? '<button type="button" class="stamp seg-lock" data-act="call-unlock" data-n="' + n + '" data-aid="' + a.id + '" data-k="' + k + '" aria-label="Locked. Tap to unlock and change this call." title="Locked. Tap to unlock and change this call."' + dis + '>' + ICON_LOCK + '</button>' : '';
+  return '<div class="fld' + extra + (locked ? ' locked' : '') + '"><span class="lb lr">' + text + '</span><div class="segwrap"><div class="seg" role="group" aria-label="' + text + ' for ' + esc(athTag(a)) + ' ' + esc(a.name) + '">' + b('', 'None') + b('>', '&gt;') + b('~', '~') + '</div>' + lockBtn + '</div></div>';
+}
 function judgeRowHTML(n, a){
   if (isAC(n)) return acRowHTML(n, a);
   var e = getEntry(n, a.id), dis = lock(n) ? ' disabled' : '';
   var chief = chiefSheet(n), l100 = n === 1 && l100On();
   var red = e.rc || (l100 && e.lc);
   var cls = 'jrow' + (chief ? ' chief' : n === 1 ? ' dn1' + (l100 ? ' l100' : '') : '') + (red ? ' has-rc' : (!chief && (e.y1 || e.y2)) ? ' has-y' : (n === 1 && e.dn) ? ' has-dn' : '');
-  // a red card selector: None, > or ~, saved to the field named by k (rc = the red card, lc = the Chief Judge's last 100m card)
-  function segF(k, cur, text, extra, locked){
-    var segDis = dis || (locked ? ' disabled' : '');
-    function b(v, label){
-      return '<button type="button" data-act="rc" data-k="' + k + '" data-n="' + n + '" data-aid="' + a.id + '" data-v="' + v + '" data-f="' + k + ':' + n + ':' + a.id + ':' + (v || 'none') + '" aria-pressed="' + (cur === v) + '"' + segDis + '>' + label + '</button>';
-    }
-    // A locked call gets its own small lock button beside the three options -- unlike those, it stays tappable (to
-    // unlock), since it is a different action from choosing one of the three, not one more of them.
-    var lockBtn = locked ? '<button type="button" class="stamp seg-lock" data-act="call-unlock" data-n="' + n + '" data-aid="' + a.id + '" data-k="' + k + '" aria-label="Locked. Tap to unlock and change this call." title="Locked. Tap to unlock and change this call."' + dis + '>' + ICON_LOCK + '</button>' : '';
-    return '<div class="fld' + extra + (locked ? ' locked' : '') + '"><span class="lb lr">' + text + '</span><div class="segwrap"><div class="seg" role="group" aria-label="' + text + ' for ' + esc(athTag(a)) + ' ' + esc(a.name) + '">' + b('', 'None') + b('>', '&gt;') + b('~', '~') + '</div>' + lockBtn + '</div></div>';
-  }
   return '<li class="' + cls + '" data-aid="' + a.id + '">' +
     '<div class="jw"><span class="who"><span class="ids">' + (useBib() ? '<b class="idn">Bib #' + (esc(a.bib) || '&ndash;') + '</b>' : '') + (useHip() ? '<b class="idn">Hip #' + (esc(a.hip) || '&ndash;') + '</b>' : '') + '</span>' +
       '<span class="nm">' + (esc(a.name) || 'Unnamed athlete') + '</span></span></div>' +
     (chief ? '' : timeField(n, a, 'y1', 'Yellow >', e.y1, 'y', !!e.y1Lock) + timeField(n, a, 'y2', 'Yellow ~', e.y2, 'y', !!e.y2Lock)) +
-    segF('rc', e.rc, chief ? 'Last 100m red card' : 'Red card', chief ? ' f-rc' : '', !!e.rcLock) +
+    segF(n, a, dis, 'rc', e.rc, chief ? 'Last 100m red card' : 'Red card', chief ? ' f-rc' : '', !!e.rcLock) +
     timeField(n, a, 'rt', 'Time of day', e.rt, 'r', e.rcLock ? 'passive' : false) +
-    (l100 ? segF('lc', e.lc, 'Last 100m red card', ' f-lc', !!e.lcLock) + timeField(n, a, 'lt', 'Time of day', e.lt, 'r', e.lcLock ? 'passive' : false).replace('<div class="fld">', '<div class="fld f-lt">') : '') +
+    (l100 ? segF(n, a, dis, 'lc', e.lc, 'Last 100m red card', ' f-lc', !!e.lcLock) + timeField(n, a, 'lt', 'Time of day', e.lt, 'r', e.lcLock ? 'passive' : false).replace('<div class="fld">', '<div class="fld f-lt">') : '') +
     (n === 1 ? dnFieldHTML(n, a, e) : '') +
   '</li>';
 }
@@ -5723,6 +5795,7 @@ function renderJudgeList(){
   if (!/^j(1[01]|[1-9])$/.test(S.tab)) return;
   var n = +S.tab.slice(1);
   var l = $('#jlist'); if (l) { l.innerHTML = judgeListHTML(n); }
+  var tv = $('#jtable'); if (tv) { tv.innerHTML = judgeTableHTML(n); }
   var v = $('#view'); if (v) v._h = null;
 }
 function refreshRow(t){
@@ -6939,6 +7012,14 @@ document.addEventListener('click', function(e){
       queueRace(200); render();
       break;
     }
+    case 'jview': {
+      S.tableView = b.dataset.v === '1'; LS.set(KEY + 'jview', S.tableView ? '1' : '0'); S.tableOpen = null; render();
+      break;
+    }
+    case 'jt-toggle': {
+      S.tableOpen = S.tableOpen === b.dataset.aid ? null : b.dataset.aid; render();
+      break;
+    }
     case 'stamp': {
       if (roEnt() || !isActive(+b.dataset.n) || !raceOpen()) break;
       var jn = +b.dataset.n, aidS = b.dataset.aid, k = b.dataset.k, en = ent(jn, aidS);
@@ -6946,10 +7027,10 @@ document.addEventListener('click', function(e){
         if (en[k + 'Lock']) break;   // locked: handled by case 'call-unlock' instead
         var athS = findAth(aidS), labS = k === 'y1' ? 'Yellow \u2014 Bent knee' : 'Yellow \u2014 Loss of contact', whoS = esc(athS ? athLabel(athS) : 'this athlete');
         if (en[k]) {
-          confirmDlg('Clear this call?', 'Clear ' + esc(labS) + ' for ' + whoS + '. This call has not been locked yet.', 'Clear', function(){ en[k] = ''; queueEntries(jn, 60); render(); });
+          confirmDlg('Clear this call?', 'Clear ' + esc(labS) + ' for ' + whoS + '. This call has not been locked yet.', 'Clear', function(){ en[k] = ''; queueEntries(jn, 60); if (S.tableView) S.tableOpen = null; render(); });
         } else {
           var whenS = nowNum();
-          confirmCallDlg(esc(labS) + ' for ' + whoS + ', at ' + fmtEnt(whenS) + '. Once confirmed, this call locks and cannot be changed without unlocking it first.', function(){ en[k] = whenS; en[k + 'Lock'] = '1'; queueEntries(jn, 60); render(); });
+          confirmCallDlg(esc(labS) + ' for ' + whoS + ', at ' + fmtEnt(whenS) + '. Once confirmed, this call locks and cannot be changed without unlocking it first.', function(){ en[k] = whenS; en[k + 'Lock'] = '1'; queueEntries(jn, 60); if (S.tableView) S.tableOpen = null; render(); });
         }
         break;
       }
@@ -6966,7 +7047,7 @@ document.addEventListener('click', function(e){
       var labR = kR === 'lc' ? 'Last 100m red card' : 'Red card', valR = b.dataset.v, choiceR = valR === '>' ? 'Bent knee' : valR === '~' ? 'Loss of contact' : 'None';
       var rtKeyR = kR === 'lc' ? 'lt' : 'rt', whenR = valR ? nowNum() : '';   // a real card records its own time of day automatically; choosing None does not
       confirmCallDlg(labR + ': ' + choiceR + (whenR ? ', at ' + fmtEnt(whenR) : '') + ', for ' + whoR + '. Once confirmed, this call locks and cannot be changed without unlocking it first.', function(){
-        enR[kR] = valR; enR[kR + 'Lock'] = '1'; if (whenR) enR[rtKeyR] = whenR; queueEntries(jn2, 60); render();
+        enR[kR] = valR; enR[kR + 'Lock'] = '1'; if (whenR) enR[rtKeyR] = whenR; queueEntries(jn2, 60); if (S.tableView) S.tableOpen = null; render();
       });
       break;
     }
@@ -7097,6 +7178,7 @@ window.addEventListener('resize', fitGrid);
   var saved = LS.get(KEY + 'tab');
   var hp = h.split('/'), po = parseOfficial(h), bo = parseBoard(h);
   S.tab = validTab(hp[0]) ? hp[0] : validTab(saved) ? saved : 'howto';
+  S.tableView = LS.get(KEY + 'jview') === '1';
   wantRace = hp[1] || LS.get(KEY + 'race');
   if (po) { S.pendingOff = po; S.tab = tabFor(po.n); if (po.race) wantRace = po.race; }   // opened from a judge's QR code
   else if (bo) { S.pendingBoard = bo; S.board = true; }                                    // opened from the DQ Board link
