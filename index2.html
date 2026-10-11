@@ -451,7 +451,8 @@ thead .cin{font-weight:600;height:100%;text-align:center;color:var(--ink)}
 .lb.lr{background:var(--red);color:var(--on-red);border-color:var(--red)}
 .lb.ln{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .lb.lw{background:var(--surface);color:var(--ink);border-color:var(--line-strong)}      /* the yellow paddle's own Time of day label -- white background, black text, distinct from the red card's red one */
-.yrow{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 12px}      /* Table view's panel is a plain vertical stack otherwise, unlike the List view row's own grid -- this puts Yellow > and Yellow ~ on the same row there too, to match */
+.frow2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 12px}      /* Table view's panel is a plain vertical stack otherwise, unlike the List view row's own grid -- this puts a pair of fields (Yellow > with Yellow ~, red card with its Time of day) on the same row there too, each at the same half-width List view gives them, to match */
+.jrow .tf.tr,.jt-panel .tf.tr{max-width:103px}      /* the red card's own Time of day box, in the judge tab specifically (the Penalty Zone tab's own Arrived/Released fields share this .tf.tr class but are untouched here) -- without a cap, .tin's flex:1 lets it grow to fill its whole grid cell, which on a wide screen is much bigger than the yellow paddle's own Time of day box; 103px matches that box's own typical width */
 .yfld{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap}      /* the yellow-paddle button and its labeled time share this one line, instead of a label row plus a separate time-field row */
 .yfbtn{cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;justify-content:center;gap:6px;height:48px;padding:0 14px;border-radius:8px;border:1px solid var(--yellow);background:var(--yellow);color:var(--on-yellow);font:600 16px var(--sans)}      /* matches the red card's own "None" segment button -- same height, font-size and weight */
 .yfbtn:disabled{opacity:.5;cursor:default}
@@ -654,17 +655,18 @@ main{min-width:0}
   .btn{font-size:23px;min-height:60px}      /* every ordinary button app-wide, not just judge-tab ones */
   .btn.sm{font-size:30px;min-height:60px;padding:0 20px}      /* .sm's own base rule otherwise wins over the plain .btn rule above on specificity, so List/Table and other "small" buttons were not actually getting any bigger -- this closes that gap, doubled like everything else below */
   .lb{font-size:26px;padding:4px 14px}      /* the "Yellow >", "Red card", "Time of day" field labels -- called out as needing to be larger still, to actually be readable */
-  .yfbtn{height:65px}                       /* matches .seg's own mobile height, so this stays the same size as the red card's "None" button there too -- None's own font-size does not grow on mobile, so no font-size override needed here either */
-  .yf-sym{font-size:42px}                   /* roughly 65% of .yfbtn's own 65px mobile height above */
+  .yfbtn{height:85px}                       /* raised to match the Time of day boxes' own mobile height below, same as .seg's -- so the yellow and red-card buttons and the time boxes beside them are all one consistent height */
+  .yf-sym{font-size:55px}                   /* roughly 65% of .yfbtn's own 85px mobile height above */
   .yf-time .lb{font-size:26px}              /* matches every other field label's mobile size above -- same class, kept explicit here since .yf-time overrides .lb's own margin-bottom */
   .ytime{height:85px;font-size:18px}        /* matches .tf/.tin's own mobile height and font-size above, so the yellow paddle's time matches the red card's Time of day field here too */
   .jw .nm{font-size:24px}                   /* athlete name, in the judge tab's own list rows */
   .jw .idn{font-size:23px}                  /* Bib #/Hip #, in the judge tab's own list rows */
   .jsum{font-size:42px}                     /* the "Yellow paddles shown / Red cards / DQ notifications" summary line -- doubled again, on top of the earlier mobile bump */
   .tf{height:85px}                          /* matches .jt-btn's own height, so the stamp button beside the time field below (which fills this height) ends up the same size as an athlete number button, as asked */
+  .jrow .tf.tr,.jt-panel .tf.tr{max-width:none}      /* the 103px desktop cap above would wrongly shrink this on mobile, where it already matches the yellow paddle's own Time of day box naturally, at the width its own grid cell gives it */
   .tin{font-size:18px}                      /* the typed time itself, e.g. 14:30 -- turned down now that the stamp button beside it is much bigger, so the field itself reads as secondary */
   .stamp{width:85px}                        /* matches .jt-btn's own width too, so this pressable button is the same size as an athlete number button in both dimensions, not just height */
-  .seg{height:65px}
+  .seg{height:85px}                         /* raised to match the Time of day boxes' own mobile height above, same as .yfbtn's -- so the yellow and red-card buttons and the time boxes beside them are all one consistent height */
   .seg button{font-size:30px}               /* the None / > / ~ red-card choices */
   /* Doubled from their current mobile (or, where none existed yet, desktop) sizes: the app header's logo mark and
      title, the meet name/date/status line, the Live sync pill, the judge/race nav tabs, this judge's own name and
@@ -5777,10 +5779,9 @@ function judgeTableRowHTML(n, a){
   var label = (esc(athTag(a)) + ' ' + esc(a.name || 'Unnamed athlete')).trim();
   var btn = '<button type="button" class="jt-btn jt-' + (color || 'none') + '" data-act="jt-toggle" data-aid="' + a.id + '" aria-expanded="' + open + '" aria-label="' + label + '">' + num + '</button>';
   var panel = open ? '<div class="jt-panel">' +
-    '<p class="jt-name">' + label + '</p>' +
-    '<div class="yrow">' + yellowField(n, a, 'y1', 'Yellow >', e.y1, !!e.y1Lock) + yellowField(n, a, 'y2', 'Yellow ~', e.y2, !!e.y2Lock) + '</div>' +
-    segF(n, a, dis, 'rc', e.rc, 'Red card', '', !!e.rcLock) +
-    timeField(n, a, 'rt', 'Time of day', e.rt, 'r', e.rcLock ? 'passive' : false) +
+    whoHTML(a) +
+    '<div class="frow2">' + yellowField(n, a, 'y1', 'Yellow >', e.y1, !!e.y1Lock) + yellowField(n, a, 'y2', 'Yellow ~', e.y2, !!e.y2Lock) + '</div>' +
+    '<div class="frow2">' + segF(n, a, dis, 'rc', e.rc, 'Red card', '', !!e.rcLock) + timeField(n, a, 'rt', 'Time of day', e.rt, 'r', e.rcLock ? 'passive' : false) + '</div>' +
   '</div>' : '';
   return '<div class="jt-row' + (open ? ' open' : '') + '" data-aid="' + a.id + '">' + btn + panel + '</div>';
 }
