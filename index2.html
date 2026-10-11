@@ -84,6 +84,7 @@ button[disabled],input[disabled]{cursor:not-allowed}
 .tab:hover{border-color:var(--ink)}
 .tab[aria-selected="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .tab.jt{min-width:44px;padding:0;justify-content:center;font:700 22px/1 var(--cond)}
+.tab.jt:not(.off):not([aria-selected="true"]){background:var(--green-soft);border-color:var(--green)}      /* a judge turned on for this race -- the same light green as the "Open" race-status indicator's own background; the currently-selected judge's own dark highlight (.tab[aria-selected="true"]) still wins over this */
 .tabs .grp{flex:none;margin:0 2px 0 10px;padding-left:12px;border-left:2px solid var(--line-strong);color:var(--muted);font-weight:600;font-size:14px}
 .rf-opts.pz-opt{margin-top:10px}
 .rf-opts.pz-opt{border:none;padding:0;background:none}
