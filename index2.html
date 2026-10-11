@@ -632,17 +632,20 @@ main{min-width:0}
   .seg button:first-child{flex:1.1;font-size:15px}
 }
 @media (max-width:960px){      /* wider than the other phone-sized breakpoints here on purpose: a phone held sideways (landscape) still reports a CSS width well over 720px, and should still get the larger mobile sizing below, not the smaller desktop one -- this covers both orientations with one breakpoint */
-  .jtable{grid-template-columns:repeat(5,minmax(0,1fr))}
-  .jt-btn{height:68px;font-size:26px}
-  .btn{font-size:18px;min-height:48px}      /* every ordinary button app-wide, not just judge-tab ones */
-  .lb{font-size:15px;padding:2px 9px}       /* the "Yellow >", "Red card", "Time of day" field labels */
-  .jw .nm{font-size:19px}                   /* athlete name, in the judge tab's own list rows */
-  .jw .idn{font-size:18px}                  /* Bib #/Hip #, in the judge tab's own list rows */
-  .jsum{font-size:17px}                     /* the "Yellow paddles shown / Red cards / DQ notifications" summary line */
-  .tf{height:52px}
-  .tin{font-size:24px}                      /* the typed time itself, e.g. 14:30 */
-  .seg{height:52px}
-  .seg button{font-size:24px}               /* the None / > / ~ red-card choices */
+  .jtable{grid-template-columns:repeat(5,minmax(0,1fr))}      /* fixed 5 is safe from 480px up: every column is wide enough there not to clip the bigger number below */
+  .jt-btn{height:85px;font-size:33px}
+  .btn{font-size:23px;min-height:60px}      /* every ordinary button app-wide, not just judge-tab ones */
+  .lb{font-size:19px;padding:3px 11px}      /* the "Yellow >", "Red card", "Time of day" field labels */
+  .jw .nm{font-size:24px}                   /* athlete name, in the judge tab's own list rows */
+  .jw .idn{font-size:23px}                  /* Bib #/Hip #, in the judge tab's own list rows */
+  .jsum{font-size:21px}                     /* the "Yellow paddles shown / Red cards / DQ notifications" summary line */
+  .tf{height:65px}
+  .tin{font-size:30px}                      /* the typed time itself, e.g. 14:30 */
+  .seg{height:65px}
+  .seg button{font-size:30px}               /* the None / > / ~ red-card choices */
+}
+@media (max-width:479px){      /* below this, a fixed 5 columns would squeeze each one narrower than the bigger number above needs -- width-driven instead, so it settles on however many (3-4) actually fit without clipping */
+  .jtable{grid-template-columns:repeat(auto-fit,minmax(80px,1fr))}
 }
 @media (max-width:720px){
   .qr-img{margin:0 auto}
