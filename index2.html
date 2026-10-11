@@ -623,8 +623,6 @@ main{min-width:0}
   .stat span{font-size:14px;line-height:1.2}
   .stat .thr{display:none}
   .jtools{position:sticky;top:0;z-index:10;background:var(--bg);padding:8px 0;margin:0 0 4px}
-  .jtable{grid-template-columns:repeat(5,minmax(0,1fr))}      /* capped, not auto-fill, so buttons stay big and easy to tap rather than shrinking to fit more per row; minmax(0,...) lets a column actually shrink below its number's own intrinsic width instead of overflowing the row */
-  .jt-btn{height:68px;font-size:26px}
   .jn{width:56px;height:56px;font-size:40px}
   .jid h2{font-size:28px}
   .dlg{padding:16px}
@@ -632,6 +630,10 @@ main{min-width:0}
 }
 @media (max-width:360px){
   .seg button:first-child{flex:1.1;font-size:15px}
+}
+@media (max-width:960px){      /* wider than the other phone-sized breakpoints here on purpose: a large phone held sideways (landscape) still reports a CSS width well over 720px, and should still get big, capped-at-5 buttons, not the many-small-columns desktop layout */
+  .jtable{grid-template-columns:repeat(5,minmax(0,1fr))}
+  .jt-btn{height:68px;font-size:26px}
 }
 @media (max-width:720px){
   .qr-img{margin:0 auto}
