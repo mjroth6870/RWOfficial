@@ -455,6 +455,7 @@ thead .cin{font-weight:600;height:100%;text-align:center;color:var(--ink)}
 .yfld{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap}      /* the yellow-paddle button and its labeled time share this one line, instead of a label row plus a separate time-field row */
 .yfbtn{cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;justify-content:center;gap:6px;height:48px;padding:0 14px;border-radius:8px;border:1px solid var(--yellow);background:var(--yellow);color:var(--on-yellow);font:600 16px var(--sans)}      /* matches the red card's own "None" segment button -- same height, font-size and weight */
 .yfbtn:disabled{opacity:.5;cursor:default}
+.yf-sym{font-size:31px;line-height:1;font-weight:700}      /* roughly 65% of the button's own 48px height -- the button's yellow color already says "yellow paddle", so just the symbol itself is shown, large */
 .yf-icon{display:inline-flex;line-height:0}
 .yf-time{display:flex;flex-direction:column;gap:4px}
 .yf-time .lb{margin-bottom:0}
@@ -654,6 +655,7 @@ main{min-width:0}
   .btn.sm{font-size:30px;min-height:60px;padding:0 20px}      /* .sm's own base rule otherwise wins over the plain .btn rule above on specificity, so List/Table and other "small" buttons were not actually getting any bigger -- this closes that gap, doubled like everything else below */
   .lb{font-size:26px;padding:4px 14px}      /* the "Yellow >", "Red card", "Time of day" field labels -- called out as needing to be larger still, to actually be readable */
   .yfbtn{height:65px}                       /* matches .seg's own mobile height, so this stays the same size as the red card's "None" button there too -- None's own font-size does not grow on mobile, so no font-size override needed here either */
+  .yf-sym{font-size:42px}                   /* roughly 65% of .yfbtn's own 65px mobile height above */
   .yf-time .lb{font-size:26px}              /* matches every other field label's mobile size above -- same class, kept explicit here since .yf-time overrides .lb's own margin-bottom */
   .ytime{height:85px;font-size:18px}        /* matches .tf/.tin's own mobile height and font-size above, so the yellow paddle's time matches the red card's Time of day field here too */
   .jw .nm{font-size:24px}                   /* athlete name, in the judge tab's own list rows */
@@ -5811,13 +5813,14 @@ function timeField(n, a, k, label, val, kind, locked){
 // clock button and typed-time field via timeField(), unaffected by this.
 function yellowField(n, a, k, label, val, locked){
   var dis = lock(n) ? ' disabled' : '';      // NOT disabled just because this field's own call is locked (locked===true) -- it must stay tappable, since tapping a locked call is how it gets unlocked
-  var lab = label.replace('>', '&gt;');
+  var lab = label.replace('>', '&gt;');               // the full "Yellow >" / "Yellow ~" text -- kept for aria-label/title, so the button is still announced clearly even though its visible text is now just the symbol
+  var sym = label.trim().split(' ').pop().replace('>', '&gt;');   // just the symbol itself (> or ~), the button's own color already says "yellow"
   var act = locked === true ? 'call-unlock' : 'stamp';
   var who = esc(athTag(a)) + ' ' + esc(a.name);
   var aria = (locked === true ? 'Locked. Tap to unlock and change this call.' : (val ? 'Clear time' : 'Use current time')) + ' for ' + who;
   var icon = locked ? ICON_LOCK : (val ? ICON_X_SM : ICON_CLOCK);
   return '<div class="fld yfld' + (val ? ' filled' : '') + (locked ? ' locked' : '') + '">' +
-    '<button type="button" class="yfbtn" data-act="' + act + '" data-n="' + n + '" data-aid="' + a.id + '" data-k="' + k + '" data-f="st:' + n + ':' + a.id + ':' + k + '" data-has="' + (val ? 1 : 0) + '" aria-label="' + lab + ', ' + aria + '" title="' + aria + '"' + dis + '>' + lab + (icon ? ' <span class="yf-icon">' + icon + '</span>' : '') + '</button>' +
+    '<button type="button" class="yfbtn" data-act="' + act + '" data-n="' + n + '" data-aid="' + a.id + '" data-k="' + k + '" data-f="st:' + n + ':' + a.id + ':' + k + '" data-has="' + (val ? 1 : 0) + '" aria-label="' + lab + ', ' + aria + '" title="' + aria + '"' + dis + '><span class="yf-sym">' + sym + '</span>' + (icon ? '<span class="yf-icon">' + icon + '</span>' : '') + '</button>' +
     '<div class="yf-time"><span class="lb lw">Time of day</span><span class="ytime">' + (val ? esc(fmtEnt(val)) : '') + '</span></div>' +
   '</div>';
 }
