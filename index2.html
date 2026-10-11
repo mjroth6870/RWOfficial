@@ -450,6 +450,16 @@ thead .cin{font-weight:600;height:100%;text-align:center;color:var(--ink)}
 .lb.ly{background:var(--yellow);color:var(--on-yellow);border-color:var(--yellow)}
 .lb.lr{background:var(--red);color:var(--on-red);border-color:var(--red)}
 .lb.ln{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.lb.lw{background:var(--surface);color:var(--ink);border-color:var(--line-strong)}      /* the yellow paddle's own Time of day label -- white background, black text, distinct from the red card's red one */
+.yrow{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 12px}      /* Table view's panel is a plain vertical stack otherwise, unlike the List view row's own grid -- this puts Yellow > and Yellow ~ on the same row there too, to match */
+.yfld{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap}      /* the yellow-paddle button and its labeled time share this one line, instead of a label row plus a separate time-field row */
+.yfbtn{cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;justify-content:center;gap:6px;height:48px;padding:0 14px;border-radius:8px;border:1px solid var(--yellow);background:var(--yellow);color:var(--on-yellow);font:600 16px var(--sans)}      /* matches the red card's own "None" segment button -- same height, font-size and weight */
+.yfbtn:disabled{opacity:.5;cursor:default}
+.yf-icon{display:inline-flex;line-height:0}
+.yf-time{display:flex;flex-direction:column;gap:4px}
+.yf-time .lb{margin-bottom:0}
+.ytime{display:flex;align-items:center;height:48px;padding:0 10px;min-width:70px;border:1px solid var(--line-strong);border-radius:8px;background:var(--surface);font:600 22px var(--sans);font-variant-numeric:tabular-nums;letter-spacing:.03em;color:var(--muted)}      /* matches the red card's own Time of day field -- same height, font-size and weight as .tin */
+.yfld.filled .ytime{color:var(--ink)}
 .tf{display:flex;height:48px;border:1px solid var(--line-strong);border-radius:8px;overflow:hidden;background:var(--surface)}
 .tf:focus-within{outline:3px solid var(--focus);outline-offset:1px}
 .tf.filled.ty{background:var(--yellow-soft);border-color:var(--yellow)}
@@ -642,12 +652,16 @@ main{min-width:0}
   .jt-btn{height:85px;font-size:33px}
   .btn{font-size:23px;min-height:60px}      /* every ordinary button app-wide, not just judge-tab ones */
   .btn.sm{font-size:30px;min-height:60px;padding:0 20px}      /* .sm's own base rule otherwise wins over the plain .btn rule above on specificity, so List/Table and other "small" buttons were not actually getting any bigger -- this closes that gap, doubled like everything else below */
-  .lb{font-size:19px;padding:3px 11px}      /* the "Yellow >", "Red card", "Time of day" field labels */
+  .lb{font-size:26px;padding:4px 14px}      /* the "Yellow >", "Red card", "Time of day" field labels -- called out as needing to be larger still, to actually be readable */
+  .yfbtn{height:65px}                       /* matches .seg's own mobile height, so this stays the same size as the red card's "None" button there too -- None's own font-size does not grow on mobile, so no font-size override needed here either */
+  .yf-time .lb{font-size:26px}              /* matches every other field label's mobile size above -- same class, kept explicit here since .yf-time overrides .lb's own margin-bottom */
+  .ytime{height:85px;font-size:18px}        /* matches .tf/.tin's own mobile height and font-size above, so the yellow paddle's time matches the red card's Time of day field here too */
   .jw .nm{font-size:24px}                   /* athlete name, in the judge tab's own list rows */
   .jw .idn{font-size:23px}                  /* Bib #/Hip #, in the judge tab's own list rows */
   .jsum{font-size:42px}                     /* the "Yellow paddles shown / Red cards / DQ notifications" summary line -- doubled again, on top of the earlier mobile bump */
-  .tf{height:65px}
-  .tin{font-size:30px}                      /* the typed time itself, e.g. 14:30 */
+  .tf{height:85px}                          /* matches .jt-btn's own height, so the stamp button beside the time field below (which fills this height) ends up the same size as an athlete number button, as asked */
+  .tin{font-size:18px}                      /* the typed time itself, e.g. 14:30 -- turned down now that the stamp button beside it is much bigger, so the field itself reads as secondary */
+  .stamp{width:85px}                        /* matches .jt-btn's own width too, so this pressable button is the same size as an athlete number button in both dimensions, not just height */
   .seg{height:65px}
   .seg button{font-size:30px}               /* the None / > / ~ red-card choices */
   /* Doubled from their current mobile (or, where none existed yet, desktop) sizes: the app header's logo mark and
@@ -5214,9 +5228,9 @@ function howtoHTML(){
 
     '<details class="rule"><summary><h3>' + ICON_CHEV + 'Judges<small>Tabs 1 to 9</small></h3></summary><ul>' +
       '<li>Each judge works only in their own tab.</li>' +
-      '<li><span class="sym">&gt;</span> <span class="sym">~</span> Yellow paddle fields: enter only the time of day for each paddle you show an athlete.</li>' +
+      '<li><span class="sym">&gt;</span> <span class="sym">~</span> Yellow paddle: tap the Yellow &gt; or Yellow ~ button itself to record the current time for that paddle; it then shows the time beside it and locks. Tap it again to unlock and change it, or to clear it if it has not locked yet.</li>' +
       '<li><span class="sym r">&gt;</span> <span class="sym r">~</span> Red card: choose the violation, then enter the time of day.</li>' +
-      '<li>Time of day is a number only, like 931 for 9:31 or 1405 for 2:05 pm. Tap the clock button to fill in the current time.</li>' +
+      '<li>Time of day fields (red card, DQ notification) take a number only, like 931 for 9:31 or 1405 for 2:05 pm. Tap the clock button to fill in the current time.</li>' +
       '<li>The symbols are &gt; for bent knee and ~ for loss of contact.</li>' +
       '<li>Judge 1, the Chief Judge, also has a DQ notification field: the time of day an athlete is told they are disqualified and removed from the race.</li>' +
       '<li>AC1 and AC2 are optional extra positions. Turn them on under Judges in this race, and give each a QR code like any judge. For now they only enter DQ notifications. Those appear with the Chief Judge&rsquo;s on every tab and export, marked AC1 or AC2. They are not on the Recorder or Red Cards sheets.</li>' +
@@ -5762,7 +5776,7 @@ function judgeTableRowHTML(n, a){
   var btn = '<button type="button" class="jt-btn jt-' + (color || 'none') + '" data-act="jt-toggle" data-aid="' + a.id + '" aria-expanded="' + open + '" aria-label="' + label + '">' + num + '</button>';
   var panel = open ? '<div class="jt-panel">' +
     '<p class="jt-name">' + label + '</p>' +
-    timeField(n, a, 'y1', 'Yellow >', e.y1, 'y', !!e.y1Lock) + timeField(n, a, 'y2', 'Yellow ~', e.y2, 'y', !!e.y2Lock) +
+    '<div class="yrow">' + yellowField(n, a, 'y1', 'Yellow >', e.y1, !!e.y1Lock) + yellowField(n, a, 'y2', 'Yellow ~', e.y2, !!e.y2Lock) + '</div>' +
     segF(n, a, dis, 'rc', e.rc, 'Red card', '', !!e.rcLock) +
     timeField(n, a, 'rt', 'Time of day', e.rt, 'r', e.rcLock ? 'passive' : false) +
   '</div>' : '';
@@ -5786,6 +5800,26 @@ function timeField(n, a, k, label, val, kind, locked){
         ' aria-label="' + lab + ' time of day for ' + esc(athTag(a)) + ' ' + esc(a.name) + '"' + dis + '>' +
       '<button type="button" class="stamp" data-act="' + stampAct + '" data-n="' + n + '" data-aid="' + a.id + '" data-k="' + k + '" data-f="st:' + n + ':' + a.id + ':' + k + '" data-has="' + (val ? 1 : 0) + '" aria-label="' + stampAria + '" title="' + stampAria + '"' + stampDis + '>' + stampIcon + '</button>' +
     '</div></div>';
+}
+// A yellow-paddle field (y1 or y2): tapping the label itself ("Yellow >" / "Yellow ~") stamps the current time,
+// with the same confirm dialog and locking as before -- it replaces the separate clock-icon button next to a time
+// field, so the label is now the one obvious tap target (more intuitive: tap the violation symbol itself, not a
+// small icon elsewhere). The button is sized to match the red card's own "None" segment button, and the time
+// beside it gets its own "Time of day" label and is sized to match the red card's own Time of day field -- the
+// same visual language as the red card's fields, just with the button itself doubling as the stamp control.
+// Scoped to y1/y2 only -- the red card's own "Time of day" (rt/lt) and DQ notification (dn) keep their separate
+// clock button and typed-time field via timeField(), unaffected by this.
+function yellowField(n, a, k, label, val, locked){
+  var dis = lock(n) ? ' disabled' : '';      // NOT disabled just because this field's own call is locked (locked===true) -- it must stay tappable, since tapping a locked call is how it gets unlocked
+  var lab = label.replace('>', '&gt;');
+  var act = locked === true ? 'call-unlock' : 'stamp';
+  var who = esc(athTag(a)) + ' ' + esc(a.name);
+  var aria = (locked === true ? 'Locked. Tap to unlock and change this call.' : (val ? 'Clear time' : 'Use current time')) + ' for ' + who;
+  var icon = locked ? ICON_LOCK : (val ? ICON_X_SM : ICON_CLOCK);
+  return '<div class="fld yfld' + (val ? ' filled' : '') + (locked ? ' locked' : '') + '">' +
+    '<button type="button" class="yfbtn" data-act="' + act + '" data-n="' + n + '" data-aid="' + a.id + '" data-k="' + k + '" data-f="st:' + n + ':' + a.id + ':' + k + '" data-has="' + (val ? 1 : 0) + '" aria-label="' + lab + ', ' + aria + '" title="' + aria + '"' + dis + '>' + lab + (icon ? ' <span class="yf-icon">' + icon + '</span>' : '') + '</button>' +
+    '<div class="yf-time"><span class="lb lw">Time of day</span><span class="ytime">' + (val ? esc(fmtEnt(val)) : '') + '</span></div>' +
+  '</div>';
 }
 function whoHTML(a){
   return '<div class="jw"><span class="who"><span class="ids">' + (useBib() ? '<b class="idn">Bib #' + (esc(a.bib) || '&ndash;') + '</b>' : '') + (useHip() ? '<b class="idn">Hip #' + (esc(a.hip) || '&ndash;') + '</b>' : '') + '</span>' +
@@ -5822,7 +5856,7 @@ function judgeRowHTML(n, a){
   return '<li class="' + cls + '" data-aid="' + a.id + '">' +
     '<div class="jw"><span class="who"><span class="ids">' + (useBib() ? '<b class="idn">Bib #' + (esc(a.bib) || '&ndash;') + '</b>' : '') + (useHip() ? '<b class="idn">Hip #' + (esc(a.hip) || '&ndash;') + '</b>' : '') + '</span>' +
       '<span class="nm">' + (esc(a.name) || 'Unnamed athlete') + '</span></span></div>' +
-    (chief ? '' : timeField(n, a, 'y1', 'Yellow >', e.y1, 'y', !!e.y1Lock) + timeField(n, a, 'y2', 'Yellow ~', e.y2, 'y', !!e.y2Lock)) +
+    (chief ? '' : yellowField(n, a, 'y1', 'Yellow >', e.y1, !!e.y1Lock) + yellowField(n, a, 'y2', 'Yellow ~', e.y2, !!e.y2Lock)) +
     segF(n, a, dis, 'rc', e.rc, chief ? 'Last 100m red card' : 'Red card', chief ? ' f-rc' : '', !!e.rcLock) +
     timeField(n, a, 'rt', 'Time of day', e.rt, 'r', e.rcLock ? 'passive' : false) +
     (l100 ? segF(n, a, dis, 'lc', e.lc, 'Last 100m red card', ' f-lc', !!e.lcLock) + timeField(n, a, 'lt', 'Time of day', e.lt, 'r', e.lcLock ? 'passive' : false).replace('<div class="fld">', '<div class="fld f-lt">') : '') +
