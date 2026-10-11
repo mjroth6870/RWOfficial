@@ -490,7 +490,7 @@ thead .cin{font-weight:600;height:100%;text-align:center;color:var(--ink)}
   .jrow.dn1 > .fld:last-child{grid-column:1/-1}
 }
 .jline{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 0 10px}
-.jclear{margin-top:28px;padding-top:18px;border-top:1px solid var(--line)}
+.jclear{margin-top:auto;padding-top:18px;border-top:1px solid var(--line)}      /* auto within .jwrap's flex column pushes this to the very bottom of the screen, with maximum space above it, instead of sitting right under the last athlete row */
 .btn.clear-entries{background:var(--red);color:#000;border-color:var(--red);font-weight:700}
 .btn.clear-entries:hover{background:var(--red-ink)}
 .jline .jsum{margin:0}
@@ -603,12 +603,9 @@ main{min-width:0}
 }
 @media (max-width:720px){
   .top{padding-top:10px;padding-bottom:4px;gap:6px 10px}
-  .brand h1{font-size:22px}
   .brand{flex-basis:100%}
-  .brand svg{width:38px;height:31px}
-  .evline{order:2;flex:1 1 0;min-width:0}
+  .evline{order:2;flex:none;width:100%;min-width:0}
   .evline .ev-name,.evline .ev-date{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .evline .ev-date{font-size:15px}
   #sync{order:3;margin-left:auto}
   .tabs{padding-top:6px;padding-bottom:10px}
   .fields{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 12px;align-items:end}
@@ -624,25 +621,50 @@ main{min-width:0}
   .stat .thr{display:none}
   .jtools{position:sticky;top:0;z-index:10;background:var(--bg);padding:8px 0;margin:0 0 4px}
   .jn{width:56px;height:56px;font-size:40px}
-  .jid h2{font-size:28px}
   .dlg{padding:16px}
   .dlg-a .btn{flex:1}
 }
 @media (max-width:360px){
   .seg button:first-child{flex:1.1;font-size:15px}
+  .brand{flex-direction:column;align-items:flex-start;gap:4px}      /* at 44px, the title shares a row with the now much-bigger logo (76px) too tightly here -- stacking the logo above gives the text the full width to wrap in, instead of a squeezed remainder narrower than its own longest word */
 }
 @media (max-width:960px){      /* wider than the other phone-sized breakpoints here on purpose: a phone held sideways (landscape) still reports a CSS width well over 720px, and should still get the larger mobile sizing below, not the smaller desktop one -- this covers both orientations with one breakpoint */
+  /* Full-page flex column so a judge tab's "Clear my entries" (margin-top:auto, on .jclear below) can land at the
+     very bottom of the screen when the roster is short, with real distance above it, rather than guessing the
+     header's pixel height and subtracting it from a fixed value -- the page just naturally fills the viewport and
+     whatever's left over goes above the button. Harmless for every other tab: a normal block child of a flex
+     column with nothing else competing for the space just renders at its own natural height, same as before. */
+  #app{display:flex;flex-direction:column;min-height:100dvh}
+  #view{flex:1;display:flex;flex-direction:column}
+  .jwrap{flex:1;display:flex;flex-direction:column}
+  .jclear{margin-top:100px}      /* a guaranteed gap, replacing the plain auto above -- with the header this much bigger it alone can exceed one screen's height, so auto alone has no spare flex space left to push into and resolves to 0; a fixed value here guarantees real, deliberate separation regardless of roster length */
   .jtable{grid-template-columns:repeat(5,minmax(0,1fr))}      /* fixed 5 is safe from 480px up: every column is wide enough there not to clip the bigger number below */
   .jt-btn{height:85px;font-size:33px}
   .btn{font-size:23px;min-height:60px}      /* every ordinary button app-wide, not just judge-tab ones */
+  .btn.sm{font-size:30px;min-height:60px;padding:0 20px}      /* .sm's own base rule otherwise wins over the plain .btn rule above on specificity, so List/Table and other "small" buttons were not actually getting any bigger -- this closes that gap, doubled like everything else below */
   .lb{font-size:19px;padding:3px 11px}      /* the "Yellow >", "Red card", "Time of day" field labels */
   .jw .nm{font-size:24px}                   /* athlete name, in the judge tab's own list rows */
   .jw .idn{font-size:23px}                  /* Bib #/Hip #, in the judge tab's own list rows */
-  .jsum{font-size:21px}                     /* the "Yellow paddles shown / Red cards / DQ notifications" summary line */
+  .jsum{font-size:42px}                     /* the "Yellow paddles shown / Red cards / DQ notifications" summary line -- doubled again, on top of the earlier mobile bump */
   .tf{height:65px}
   .tin{font-size:30px}                      /* the typed time itself, e.g. 14:30 */
   .seg{height:65px}
   .seg button{font-size:30px}               /* the None / > / ~ red-card choices */
+  /* Doubled from their current mobile (or, where none existed yet, desktop) sizes: the app header's logo mark and
+     title, the meet name/date/status line, the Live sync pill, the judge/race nav tabs, this judge's own name and
+     cert line, and the red-card symbol key -- all called out as hard to read at their previous mobile size. */
+  .brand h1{font-size:44px}
+  .brand-by{font-size:26px}
+  .brand svg{width:76px;height:62px}
+  .ev-name{font-size:40px}
+  .ev-date{font-size:30px}
+  .ev-st{font-size:28px;padding:5px 18px}
+  .pill{font-size:28px;padding:10px 22px}
+  .tab{font-size:32px;min-height:76px}
+  .jid h2{font-size:56px}
+  .jid p{font-size:32px}
+  .legend{font-size:28px;gap:20px}
+  .legend b{font-size:32px;min-width:44px;height:40px}
 }
 @media (max-width:479px){      /* below this, a fixed 5 columns would squeeze each one narrower than the bigger number above needs -- width-driven instead, so it settles on however many (3-4) actually fit without clipping */
   .jtable{grid-template-columns:repeat(auto-fit,minmax(80px,1fr))}
