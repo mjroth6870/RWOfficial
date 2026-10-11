@@ -631,9 +631,18 @@ main{min-width:0}
 @media (max-width:360px){
   .seg button:first-child{flex:1.1;font-size:15px}
 }
-@media (max-width:960px){      /* wider than the other phone-sized breakpoints here on purpose: a large phone held sideways (landscape) still reports a CSS width well over 720px, and should still get big, capped-at-5 buttons, not the many-small-columns desktop layout */
+@media (max-width:960px){      /* wider than the other phone-sized breakpoints here on purpose: a phone held sideways (landscape) still reports a CSS width well over 720px, and should still get the larger mobile sizing below, not the smaller desktop one -- this covers both orientations with one breakpoint */
   .jtable{grid-template-columns:repeat(5,minmax(0,1fr))}
   .jt-btn{height:68px;font-size:26px}
+  .btn{font-size:18px;min-height:48px}      /* every ordinary button app-wide, not just judge-tab ones */
+  .lb{font-size:15px;padding:2px 9px}       /* the "Yellow >", "Red card", "Time of day" field labels */
+  .jw .nm{font-size:19px}                   /* athlete name, in the judge tab's own list rows */
+  .jw .idn{font-size:18px}                  /* Bib #/Hip #, in the judge tab's own list rows */
+  .jsum{font-size:17px}                     /* the "Yellow paddles shown / Red cards / DQ notifications" summary line */
+  .tf{height:52px}
+  .tin{font-size:24px}                      /* the typed time itself, e.g. 14:30 */
+  .seg{height:52px}
+  .seg button{font-size:24px}               /* the None / > / ~ red-card choices */
 }
 @media (max-width:720px){
   .qr-img{margin:0 auto}
