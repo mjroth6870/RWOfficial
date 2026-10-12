@@ -657,6 +657,7 @@ main{min-width:0}
   .jtable{grid-template-columns:repeat(auto-fit,minmax(100px,1fr))}      /* 25% up from 80px, matching .jt-btn's own 25% bump above -- still width-driven, not a fixed count: a fixed count measured safe in testing but still overflowed on at least one real device, cutting off every 5th athlete; auto-fit can't overflow by construction, since the browser itself computes how many actually fit */
   .btn{font-size:23px;min-height:60px}      /* every ordinary button app-wide, not just judge-tab ones */
   .btn.sm{font-size:30px;min-height:60px;padding:0 20px}      /* .sm's own base rule otherwise wins over the plain .btn rule above on specificity, so List/Table and other "small" buttons were not actually getting any bigger -- this closes that gap, doubled like everything else below */
+  .jtools input[type=search]{height:60px;font-size:22px}      /* matches .btn.sm's mobile height above -- the base rule's 38px only matched .btn.sm's desktop height, so on mobile the search box stayed small while List/Table grew */
   .lb{font-size:26px;padding:4px 14px}      /* the "Yellow >", "Red card", "Time of day" field labels -- called out as needing to be larger still, to actually be readable */
   .yfbtn{height:85px}                       /* raised to match the Time of day boxes' own mobile height below, same as .seg's -- so the yellow and red-card buttons and the time boxes beside them are all one consistent height */
   .yf-sym{font-size:55px}                   /* roughly 65% of .yfbtn's own 85px mobile height above */
