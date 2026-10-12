@@ -424,7 +424,7 @@ thead .cin{font-weight:600;height:100%;text-align:center;color:var(--ink)}
 .qr-link{width:100%;height:44px;padding:0 10px;border:1px solid var(--line-strong);border-radius:8px;background:var(--surface-2);font-size:14px}
 .qr-note{margin:8px 0 0;color:var(--muted);font-size:14px}
 .jtools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
-.jtools input[type=search]{flex:1;min-width:0;height:44px;padding:0 12px;border:1px solid var(--line-strong);border-radius:8px;background:var(--surface)}
+.jtools input[type=search]{flex:1;min-width:0;height:38px;padding:0 12px;border:1px solid var(--line-strong);border-radius:8px;background:var(--surface);font-weight:700}      /* matched to .btn.sm's own min-height, so the search box and the List/Table buttons line up; bold so the typed/placeholder text is easier to read */
 .jsum{color:var(--muted);font-weight:500;margin:0 0 10px}
 .jsum b{color:var(--ink)}
 .jlist{list-style:none;margin:0;padding:0;display:grid;gap:8px}
@@ -503,7 +503,10 @@ thead .cin{font-weight:600;height:100%;text-align:center;color:var(--ink)}
   .jrow.dn1 > .fld:last-child{grid-column:1/-1}
 }
 .jline{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 0 10px}
-.jclear{margin-top:auto;padding-top:18px;border-top:1px solid var(--line)}      /* auto within .jwrap's flex column pushes this to the very bottom of the screen, with maximum space above it, instead of sitting right under the last athlete row */
+.jclear{margin-top:auto;padding-top:18px;border-top:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:16px}      /* auto within .jwrap's flex column pushes this to the very bottom of the screen, with maximum space above it, instead of sitting right under the last athlete row -- flex row with space-between puts How To on the left and Clear my entries on the right, with the freed-up space between them */
+.jclear .howto-link{flex:none}
+.jclear .clear-entries{flex:none;margin-left:auto}
+.jqr-hidden{display:none}      /* hides the "Show QR code" toggle (and its panel) specifically on judge tabs -- the Penalty Zone tab's own QR panel is unaffected since it isn't wrapped in this class */
 .btn.clear-entries{background:var(--red);color:#000;border-color:var(--red);font-weight:700}
 .btn.clear-entries:hover{background:var(--red-ink)}
 .jline .jsum{margin:0}
@@ -4929,7 +4932,11 @@ function jtabHTML(n){
 function renderNav(){
   if (S.official) {
     var jn = S.official, nmo = S.event.judges[jn - 1].name;
-    setHTML($('#nav'), '<div class="tabrow"><button class="tab" role="tab" aria-selected="' + (S.tab === 'howto') + '" data-act="tab" data-tab="howto">How To</button>' +
+    // Judges get the How To button moved down to the bottom of their sheet, beside "Clear my entries" (see judgeHTML),
+    // so it isn't taking up space in this already-minimal 2-button nav. The Penalty Zone Manager has no such row, so
+    // How To stays here for PZM, unaffected.
+    var howToTop = isPZM(jn) ? '<button class="tab" role="tab" aria-selected="' + (S.tab === 'howto') + '" data-act="tab" data-tab="howto">How To</button>' : '';
+    setHTML($('#nav'), '<div class="tabrow">' + howToTop +
       '<button class="tab" role="tab" aria-selected="' + (S.tab === tabFor(jn)) + '" data-act="tab" data-tab="' + tabFor(jn) + '">' + jtitle(jn) + (nmo ? ', ' + esc(nmo) : '') + '</button></div>');
     return;
   }
@@ -5713,7 +5720,7 @@ function judgeHTML(n){
     '<div class="jhead"><div class="jn' + (isAC(n) ? ' ac' : '') + '" aria-hidden="true">' + jtag(n) + '</div>' +
       '<div class="jid"><h2>' + jtitle(n) + (n === 1 ? '<span class="chief">Chief</span>' : '') + '</h2><p>' + who + '</p>' + (inHeats() ? '<p class="jrace-line"><span class="jrace">' + esc(raceLabel(S.raceId)) + '</span></p>' : '') + (chiefSheet(n) ? '<p class="jrace-line"><span class="jrace jsup">Supervisory official</span></p>' : '') + '</div>' +
       (isAC(n) ? '' : '<div class="legend"><span><b>&gt;</b>Bent knee</span><span><b>~</b>Loss of contact</span></div>') + '</div>' +
-    qrPanelHTML(n) +
+    '<div class="jqr-hidden">' + qrPanelHTML(n) + '</div>' +
     (raceOpen() ? '' : '<p class="banner ' + ST[raceStatus()].cls + '">This race is <b>' + ST[raceStatus()].label.toLowerCase() + '</b>. ' + (raceStatus() === 'closed' ? 'The Recorder can reopen it to make corrections.' : 'The Recorder opens it for updates when it starts.') + '</p>') +
     (isActive(n) ? '' : '<p class="banner">' + jtitle(n) + ' is not active in this race. The Recorder can turn this judge on under Judges in this race on the Setup tab.</p>') +
     '<div class="jtools"><input type="search" id="jq" data-f="jq" placeholder="Find an athlete by ' + orJoin((useHip() ? ['hip'] : []).concat(useBib() ? ['bib'] : [], ['name'])) + '" value="' + esc(S.filter) + '" aria-label="Find an athlete"></div>' +
@@ -5722,7 +5729,8 @@ function judgeHTML(n){
     (canTableView(n) && S.tableView
       ? '<div class="jtable" id="jtable">' + judgeTableHTML(n) + '</div>'
       : '<ol class="jlist" id="jlist">' + judgeListHTML(n) + '</ol>') +
-    '<div class="jclear"><button class="btn clear-entries" data-act="clear-judge" data-n="' + n + '"' + dis + '>Clear my entries</button></div></div>';
+    '<div class="jclear">' + (S.official ? '<button type="button" class="btn howto-link" data-act="tab" data-tab="howto">How To</button>' : '') +
+      '<button class="btn clear-entries" data-act="clear-judge" data-n="' + n + '"' + dis + '>Clear my entries</button></div></div>';
 }
 function qrPanelHTML(n){
   var open = S.qrOpen, nm = S.event.judges[n - 1].name;
