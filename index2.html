@@ -428,9 +428,9 @@ thead .cin{font-weight:600;height:100%;text-align:center;color:var(--ink)}
 .jsum{color:var(--muted);font-weight:500;margin:0 0 10px}
 .jsum b{color:var(--ink)}
 .jlist{list-style:none;margin:0;padding:0;display:grid;gap:8px}
-.jtable{display:grid;grid-template-columns:repeat(auto-fill,minmax(85px,1fr));gap:8px;margin:0}      /* width-driven at this size everywhere above the phone range (960px breakpoint below caps it at a fixed 5 there), so a wide landscape phone or a tablet gets more columns at this same big size instead of reverting to a smaller, denser grid */
+.jtable{display:grid;grid-template-columns:repeat(auto-fill,minmax(106px,1fr));gap:8px;margin:0}      /* width-driven at this size everywhere above the phone range (960px breakpoint below is width-driven too, at its own size), so a wide landscape phone or a tablet gets more columns at this same big size instead of reverting to a smaller, denser grid */
 .jt-row.open{grid-column:1 / -1}
-.jt-btn{width:100%;height:85px;border-radius:10px;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);font:800 33px var(--cond);cursor:pointer}      /* this size now applies everywhere, not just on narrow screens, so it reads the same in landscape as it does in portrait */
+.jt-btn{width:100%;height:106px;border-radius:10px;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);font:800 41px var(--cond);cursor:pointer}      /* 25% larger again, on top of the earlier mobile bump -- this size now applies everywhere, not just on narrow screens, so it reads the same in landscape as it does in portrait */
 .jt-btn.jt-y{background:var(--yellow);border-color:var(--yellow);color:var(--on-yellow)}
 .jt-btn.jt-r{background:var(--red);border-color:var(--red);color:var(--on-red)}
 .jt-panel{margin-top:8px;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);display:grid;gap:10px}
@@ -651,7 +651,7 @@ main{min-width:0}
   #view{flex:1;display:flex;flex-direction:column}
   .jwrap{flex:1;display:flex;flex-direction:column}
   .jclear{margin-top:100px}      /* a guaranteed gap, replacing the plain auto above -- with the header this much bigger it alone can exceed one screen's height, so auto alone has no spare flex space left to push into and resolves to 0; a fixed value here guarantees real, deliberate separation regardless of roster length */
-  .jtable{grid-template-columns:repeat(auto-fit,minmax(80px,1fr))}      /* width-driven here too, not a fixed count -- a fixed 5 measured safe in testing but still overflowed on at least one real device, cutting off every 5th athlete; auto-fit can't overflow by construction, since the browser itself computes how many actually fit */
+  .jtable{grid-template-columns:repeat(auto-fit,minmax(100px,1fr))}      /* 25% up from 80px, matching .jt-btn's own 25% bump above -- still width-driven, not a fixed count: a fixed count measured safe in testing but still overflowed on at least one real device, cutting off every 5th athlete; auto-fit can't overflow by construction, since the browser itself computes how many actually fit */
   .btn{font-size:23px;min-height:60px}      /* every ordinary button app-wide, not just judge-tab ones */
   .btn.sm{font-size:30px;min-height:60px;padding:0 20px}      /* .sm's own base rule otherwise wins over the plain .btn rule above on specificity, so List/Table and other "small" buttons were not actually getting any bigger -- this closes that gap, doubled like everything else below */
   .lb{font-size:26px;padding:4px 14px}      /* the "Yellow >", "Red card", "Time of day" field labels -- called out as needing to be larger still, to actually be readable */
