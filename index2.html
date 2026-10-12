@@ -651,7 +651,7 @@ main{min-width:0}
   #view{flex:1;display:flex;flex-direction:column}
   .jwrap{flex:1;display:flex;flex-direction:column}
   .jclear{margin-top:100px}      /* a guaranteed gap, replacing the plain auto above -- with the header this much bigger it alone can exceed one screen's height, so auto alone has no spare flex space left to push into and resolves to 0; a fixed value here guarantees real, deliberate separation regardless of roster length */
-  .jtable{grid-template-columns:repeat(5,minmax(0,1fr))}      /* fixed 5 from 480px to 960px specifically: wide enough there not to clip the number, capped so buttons stay big and touch-friendly rather than shrinking to fit more per row; the base rule above (auto-fill) takes over again past 960px, so a wide landscape phone or tablet gets more columns at the same size instead of reverting to small ones */
+  .jtable{grid-template-columns:repeat(auto-fit,minmax(80px,1fr))}      /* width-driven here too, not a fixed count -- a fixed 5 measured safe in testing but still overflowed on at least one real device, cutting off every 5th athlete; auto-fit can't overflow by construction, since the browser itself computes how many actually fit */
   .btn{font-size:23px;min-height:60px}      /* every ordinary button app-wide, not just judge-tab ones */
   .btn.sm{font-size:30px;min-height:60px;padding:0 20px}      /* .sm's own base rule otherwise wins over the plain .btn rule above on specificity, so List/Table and other "small" buttons were not actually getting any bigger -- this closes that gap, doubled like everything else below */
   .lb{font-size:26px;padding:4px 14px}      /* the "Yellow >", "Red card", "Time of day" field labels -- called out as needing to be larger still, to actually be readable */
@@ -683,9 +683,6 @@ main{min-width:0}
   .jid p{font-size:32px}
   .legend{font-size:28px;gap:20px}
   .legend b{font-size:32px;min-width:44px;height:40px}
-}
-@media (max-width:479px){      /* below this, a fixed 5 columns would squeeze each one narrower than the bigger number above needs -- width-driven instead, so it settles on however many (3-4) actually fit without clipping */
-  .jtable{grid-template-columns:repeat(auto-fit,minmax(80px,1fr))}
 }
 @media (max-width:720px){
   .qr-img{margin:0 auto}
