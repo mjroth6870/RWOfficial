@@ -522,7 +522,6 @@ thead .cin{font-weight:600;height:100%;text-align:center;color:var(--ink)}
 .jclear{margin-top:auto;padding-top:18px;border-top:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:16px}      /* auto within .jwrap's flex column pushes this to the very bottom of the screen, with maximum space above it, instead of sitting right under the last athlete row -- flex row with space-between puts How To on the left and Clear my entries on the right, with the freed-up space between them */
 .jclear .howto-link{flex:none}
 .jclear .clear-entries{flex:none;margin-left:auto}
-.jqr-hidden{display:none}      /* hides the "Show QR code" toggle (and its panel) specifically on judge tabs -- the Penalty Zone tab's own QR panel is unaffected since it isn't wrapped in this class */
 .btn.clear-entries{background:var(--red);color:#000;border-color:var(--red);font-weight:700}
 .btn.clear-entries:hover{background:var(--red-ink)}
 .jline .jsum{margin:0}
@@ -5809,7 +5808,7 @@ function judgeHTML(n){
     '<div class="jhead"><div class="jn' + (isAC(n) ? ' ac' : '') + '" aria-hidden="true">' + jtag(n) + '</div>' +
       '<div class="jid"><h2>' + jtitle(n) + (n === 1 ? '<span class="chief">Chief</span>' : '') + '</h2><p>' + who + '</p>' + (inHeats() ? '<p class="jrace-line"><span class="jrace">' + esc(raceLabel(S.raceId)) + '</span></p>' : '') + (chiefSheet(n) ? '<p class="jrace-line"><span class="jrace jsup">Supervisory official</span></p>' : '') + '</div>' +
       (isAC(n) ? '' : '<div class="legend"><span><b>&gt;</b>Bent knee</span><span><b>~</b>Loss of contact</span></div>') + '</div>' +
-    '<div class="jqr-hidden">' + qrPanelHTML(n) + '</div>' +
+    qrPanelHTML(n) +
     (raceOpen() ? '' : '<p class="banner ' + ST[raceStatus()].cls + '">This race is <b>' + ST[raceStatus()].label.toLowerCase() + '</b>. ' + (raceStatus() === 'closed' ? 'The Recorder can reopen it to make corrections.' : 'The Recorder opens it for updates when it starts.') + '</p>') +
     (isActive(n) ? '' : '<p class="banner">' + jtitle(n) + ' is not active in this race. The Recorder can turn this judge on under Judges in this race on the Setup tab.</p>') +
     '<div class="jtools"><input type="search" id="jq" data-f="jq" placeholder="Find an athlete by ' + orJoin((useHip() ? ['hip'] : []).concat(useBib() ? ['bib'] : [], ['name'])) + '" value="' + esc(S.filter) + '" aria-label="Find an athlete"></div>' +
