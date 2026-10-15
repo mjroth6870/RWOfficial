@@ -210,8 +210,8 @@ main{padding:0 16px 56px}
 .board-cards{flex:1 1 auto;display:flex;align-items:center;gap:calc(var(--board-row-h,60px) * .08);flex-wrap:nowrap;min-height:1em;min-width:0;overflow:hidden}
 .chip-rc.board-chip{min-width:calc(var(--board-row-h,60px) * .6);height:calc(var(--board-row-h,60px) * .6);padding:0;font-size:calc(var(--board-row-h,60px) * .34);border-radius:calc(var(--board-row-h,60px) * .11)}
 .board-status{flex:none;display:flex;gap:4px}
-.pzb-grid{flex:1 1 auto;min-height:0;overflow:hidden;display:grid;gap:16px;align-content:start;
-  grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+.pzb-grid{flex:1 1 auto;min-height:0;overflow:hidden;display:grid;gap:16px;align-content:start;justify-content:start;
+  grid-template-columns:repeat(auto-fill,260px)}
 .pzb-card{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
   padding:18px 14px;background:var(--surface);border:1px solid var(--line);border-left:8px solid var(--line-strong);border-radius:12px;min-height:120px}
 .pzb-card.run,.pzb-card.time{border-left-color:var(--ink)}
@@ -5306,6 +5306,7 @@ function howtoHTML(){
       '<li>Set how many red cards send an athlete to the Penalty Zone or result in a DQ. The default is a DQ at 3.</li>' +
       '<li>Under Race format, check Penalty Zone to turn on the Penalty Zone tab, next to Red Cards. The tab stays greyed out until then. Once it is on, PZM (Penalty Zone Manager) can be turned on under Judges in this race. The PZM gets a QR code, shown on the Penalty Zone tab, that opens only that tab on their own device.</li>' +
       '<li>On the Penalty Zone tab, choose the countdown time for the race: 30 seconds, or 1 to 5 minutes. Athletes appear there when they receive the red card that sends them to the Penalty Zone. Record the time each arrives (the clock button, or type it) to start their countdown, which turns yellow for the last 10 seconds. Checking Penalty Served stops the countdown, records the release time as now, and releases the athlete, all in one step; the clock button is still there for recording a specific release time instead. A PZ marker then appears in the Red Cards column of the Recorder and Red Cards tabs, and DQ is added to it if a later red card disqualifies them.</li>' +
+      '<li>The Penalty Zone Board, in its own section on the Penalty Zone tab, is a public, read-only screen for a TV or tablet right at the Penalty Zone: every athlete there now, each in their own card with a live countdown, a Served label once released, or Waiting to arrive before that. No sign-in is needed to view it, and nobody can change anything from it. Scan its QR code or use its link, the same way as the DQ Board.</li>' +
       '<li>Load sample race and Clear all judge entries are at the bottom of the Setup tab.</li>' +
     '</ul></details>' +
 
@@ -5345,6 +5346,7 @@ function howtoHTML(){
       '<li>Officials do not need an account. They scan the QR code on their judge tab, or type its code.</li>' +
       '<li>Export meet data on the Setup tab saves a meet as a backup file. Import from file on My meets restores it, in this copy of the app or another.</li>' +
       '<li>The DQ Board, on the Setup tab, is a public scoreboard for a TV or projector: every athlete&rsquo;s hip or bib # and red cards, in number order, with no sign-in needed. Cast the link to a Chromecast from Chrome, or open it full-screen over HDMI. It sizes its own text to fill the screen automatically; set Rows per column there to fix it at a specific number of rows instead, for example to force bigger text on a small field. An athlete&rsquo;s number turns red once they are disqualified &mdash; either by reaching the red card count for a DQ, or by a last 100m red card from a supervisory Chief Judge, even with only that one card.</li>' +
+      '<li>The Penalty Zone Board works the same way, but lives on the Penalty Zone tab: it shows who is in the Penalty Zone right now, each with a live countdown, instead of the whole field&rsquo;s red cards.</li>' +
       '<li>An admin can open Admin from My meets to browse every account and see the meets they own. From there, an admin can archive or restore any meet, reset an official&rsquo;s codes on it, and suspend or lift the suspension on an account &mdash; all without needing that account&rsquo;s owner. Open, on a meet, shows it read-only, with the same Export PDF and Export meet data tools its owner has, so an admin can pull a copy of anyone&rsquo;s results without changing anything; a banner marks the view and the back button returns to Admin. Editing someone else&rsquo;s meet setup directly, and deleting a meet or a login outright, are not offered here. The first account ever created becomes an admin automatically, and any admin can make or remove others from that screen.</li>' +
       '<li>Edit name, next to your name on My meets, lets you choose what is shown there instead of whatever your sign-in provided &mdash; useful if it shows an email address or an unfamiliar name. It changes everywhere your name appears, including the admin screen. Clear the box to go back to your sign-in&rsquo;s own name.</li>' +
     '</ul></details>' +
