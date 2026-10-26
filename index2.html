@@ -3281,6 +3281,12 @@ var LS = {
   get: function(k){ try { return localStorage.getItem(k); } catch(e){ return null; } },
   set: function(k, v){ try { localStorage.setItem(k, v); } catch(e){} }
 };
+// Kept per browser tab, not localStorage: a support session should not quietly survive closing the tab.
+var SS = {
+  get: function(k){ try { return sessionStorage.getItem(k); } catch(e){ return null; } },
+  set: function(k, v){ try { sessionStorage.setItem(k, v); } catch(e){} },
+  remove: function(k){ try { sessionStorage.removeItem(k); } catch(e){} }
+};
 function nowNum(){ var d = new Date(); return String(d.getHours() * 100 + d.getMinutes()); }
 // A stored time digit-string (HHMM or HHMMSS) as HH:MM or HH:MM:SS, for a confirmation message -- the fields
 // themselves keep showing the plain digits, unchanged, since that is the existing, familiar way of typing one.
@@ -3388,6 +3394,7 @@ var S = {
   adminAdmins: null,               // (Firebase) every other admin's uid, for the admin management list
   suspended: false,                // this account has been suspended by an admin: read-only everywhere, even its own meets
   fromAdmin: false,                // this meet was opened from the admin screen; the back button should return there, not to My meets
+  support: null,                   // {owner, meetId, name, email, meetName} while an admin is working live inside another account's meet -- see inSupport()
   otherDevice: 0,                  // a judge position (1-11; never PZM) that another device also appears to be actively recording as, right now
   qrOpen: false,                 // QR panel open on the judge tab
   official: 0,                   // judge number this device is officiating as (0 = normal app)
@@ -3413,7 +3420,9 @@ var db = null, dl = null, U = null;
 
 // ro(): may this viewer change the meet itself (setup, athletes, officials, statuses)? Only its owner, and not while archived.
 // roEnt(): may this viewer record judge entries? Anyone with the meet open, unless it is archived.
-function ro(){ return !S.ready || !S.canWrite || S.archived || S.suspended || (!!S.acct && S.screen === 'meet' && !S.acct.mine); }
+// A support session lets an admin write into the exact meet it names -- never any other meet they might browse to.
+function inSupport(){ return !!(S.isAdmin && S.support && S.acct && S.acct.owner === S.support.owner && S.acct.meetId === S.support.meetId); }
+function ro(){ return !S.ready || !S.canWrite || S.archived || S.suspended || (!!S.acct && S.screen === 'meet' && !S.acct.mine && !inSupport()); }
 function roEnt(){ return !S.ready || !S.canWrite || S.archived; }
 function isSupervisory(){ return S.event.supervisory === true; }
 function isActive(n){
@@ -4001,6 +4010,7 @@ async function signOutNow(){
   if (adminSub) { try { adminSub(); } catch(e){} adminSub = null; }
   if (suspSub) { try { suspSub(); } catch(e){} suspSub = null; }
   S.isAdmin = false; S.adminAccounts = null; S.adminSel = null; S.adminSelMeets = null; S.adminSelErrlog = null; S.adminAdmins = null; S.suspended = false; S.fromAdmin = false;
+  S.support = null; SS.remove(KEY + 'support');
   S.screen = 'signin'; try { if (location.hash) location.hash = ''; } catch(e){}
   render();
 }
@@ -4078,6 +4088,7 @@ function subscribeSuspended(){
 // -- the app has no way to grant that itself, so there is no separate admins list to manage there.
 var adminSub = null;
 function subscribeIsAdmin(){
+  if (!S._supportLoaded) { S._supportLoaded = true; try { var st = SS.get(KEY + 'support'); if (st) S.support = JSON.parse(st); } catch(e){} }
   if (!S.standalone) {
     (async function(){
       S.isAdmin = false;
@@ -4147,6 +4158,35 @@ function openBoard(owner, meetId){
   render();
 }
 
+// Puts an admin to work live inside another account's meet: unlike plain admin "Open" (read-only), entries made
+// here are saved to the account's actual meet, exactly as if its own officials had made them. Logged on that
+// account so its owner can see it happened, in adminErrlogHTML. Kept open (SS) until End session, so leaving for
+// the admin screen and coming back (resumeSupport) does not need reopening or logging again.
+function adminOpenSupport(uid, meetId, name, email, meetName){
+  if (!S.isAdmin) return;
+  S.support = {owner:uid, meetId:meetId, name:str(name), email:str(email), meetName:str(meetName)};
+  SS.set(KEY + 'support', JSON.stringify(S.support));
+  logAccountEvent(uid, 'support_open', '“' + (meetName || 'a meet') + '” opened by admin.');
+  S.fromAdmin = true; LS.set(KEY + 'official', '');
+  openMeet(uid, meetId);
+}
+function resumeSupport(){
+  if (!S.support) return;
+  S.fromAdmin = true; LS.set(KEY + 'official', '');
+  openMeet(S.support.owner, S.support.meetId);
+}
+function endSupport(){
+  if (!S.support) return;
+  logAccountEvent(S.support.owner, 'support_end', '“' + (S.support.meetName || 'meet') + '” by admin.');
+  S.support = null; SS.remove(KEY + 'support');
+  goHome();
+}
+function supportBannerHTML(){
+  if (!S.support) return '';
+  var here = S.acct && S.acct.owner === S.support.owner && S.acct.meetId === S.support.meetId && S.screen === 'meet';
+  return '<div class="off-banner warn-banner"><span><b>Support session open</b> in &ldquo;' + esc(S.support.meetName || 'a meet') + '&rdquo;, which belongs to ' + esc(S.support.name || 'another account') + (S.support.email ? ' <span class="muted">(' + esc(S.support.email) + ')</span>' : '') + '. ' + (here ? 'Changes you make here are saved to their meet.' : '') + '</span>' +
+    '<div class="mc-act">' + (here ? '' : '<button type="button" class="btn sm" data-act="resume-support">Go to meet</button>') + '<button type="button" class="btn sm warn" data-act="end-support">End session</button></div></div>';
+}
 function goHome(){
   teardownMeet();
   S.acct.owner = null; S.acct.meetId = null; S.acct.mine = false; S.acct.legacy = false;
@@ -4424,11 +4464,15 @@ function adminAccountRowHTML(a){
     (!isMe ? '<button class="btn" data-act="admin-toggle-suspend" data-id="' + esc(a.uid) + '" data-v="' + (a.suspended ? '0' : '1') + '"' + (S.canWrite ? '' : ' disabled') + '>' + (a.suspended ? 'Lift suspension' : 'Suspend') + '</button>' : '') + '</div></li>';
 }
 // A meet row with the same actions its own owner would have (archive/restore, reset codes, plus a read-only Open to
-// use the same Export CSV/PDF/meet data tools the owner has), usable by an admin on any account's meets.
-function adminMeetRowHTML(m, uid){
+// use the same Export CSV/PDF/meet data tools the owner has), usable by an admin on any account's meets. Open in
+// support mode is the one exception that writes: it puts the meet on this device live, exactly as its own
+// officials would use it, for an admin to fix setup or enter something on their behalf.
+function adminMeetRowHTML(m, uid, acctName, acctEmail){
   var when = m.date ? esc(fmtDate(m.date)) : 'No date';
+  var already = S.support && S.support.owner === uid && S.support.meetId === m.id;
   return '<li class="mcard"><div class="mc-main"><b class="mc-name">' + (esc(m.name) || 'Untitled meet') + '</b><span class="mc-sub">' + when + (m.archived ? ' &middot; archived' : '') + '</span></div>' +
     '<div class="mc-act"><button class="btn" data-act="admin-open-meet" data-uid="' + esc(uid) + '" data-id="' + esc(m.id) + '" title="Open read-only, to use its Export CSV, PDF or meet data">Open</button>' +
+    '<button class="btn" data-act="' + (already ? 'resume-support' : 'admin-open-support') + '" data-uid="' + esc(uid) + '" data-id="' + esc(m.id) + '" data-name="' + esc(m.name || 'this meet') + '" data-acctname="' + esc(acctName || 'this account') + '" data-acctemail="' + esc(acctEmail || '') + '"' + (S.canWrite ? '' : ' disabled') + ' title="Open live and work in it on their behalf. Logged on their account.">' + (already ? 'Go to meet' : 'Open in support mode') + '</button>' +
     (m.archived
       ? '<button class="btn" data-act="admin-restore-meet" data-uid="' + esc(uid) + '" data-id="' + esc(m.id) + '"' + (S.canWrite ? '' : ' disabled') + '>Restore</button>'
       : '<button class="btn" data-act="admin-archive-meet" data-uid="' + esc(uid) + '" data-id="' + esc(m.id) + '" data-name="' + esc(m.name || 'this meet') + '"' + (S.canWrite ? '' : ' disabled') + '>Archive</button>' +
@@ -4439,8 +4483,8 @@ function adminDetailHTML(){
   var a = (S.adminAccounts || []).filter(function(x){ return x.uid === S.adminSel; })[0];
   var meets = S.adminSelMeets, uid = S.adminSel;
   var act = meets ? meets.filter(function(m){ return !m.archived; }) : [], arc = meets ? meets.filter(function(m){ return m.archived; }) : [];
-  var row = function(m){ return adminMeetRowHTML(m, uid); };
-  return '<section class="band"><button type="button" class="btn sm" data-act="admin-back">&lsaquo; All accounts</button>' +
+  var row = function(m){ return adminMeetRowHTML(m, uid, a && a.name, a && a.email); };
+  return supportBannerHTML() + '<section class="band"><button type="button" class="btn sm" data-act="admin-back">&lsaquo; All accounts</button>' +
     '<h2 class="sec-h" style="margin-top:10px">' + (a ? esc(a.name) || 'Unnamed account' : 'Account') + '</h2>' +
     (a ? '<p class="off-note">' + (a.email ? esc(a.email) : 'No email shared') + ' &middot; created ' + (a.createdAt ? esc(fmtDate(a.createdAt.slice(0, 10))) : 'unknown') + '</p>' : '') +
     (meets === null ? '<p class="off-note">Loading their meets&hellip;</p>' :
@@ -4451,15 +4495,15 @@ function adminDetailHTML(){
 // Why this account went read-only, or was suspended/unsuspended, most recent first -- the most recent 20 entries;
 // older ones are not deleted automatically, but an admin can clear them below.
 function adminErrlogHTML(){
-  var KIND_LABEL = {write_denied:'Write denied', revoked:'Access revoked', suspended:'Suspended', unsuspended:'Suspension lifted'};
+  var KIND_LABEL = {write_denied:'Write denied', revoked:'Access revoked', suspended:'Suspended', unsuspended:'Suspension lifted', support_open:'Support session opened', support_end:'Support session ended'};
   var log = S.adminSelErrlog;
   var row = function(e){
     return '<li class="mcard"><div class="mc-main"><b class="mc-name">' + esc(KIND_LABEL[e.kind] || e.kind || 'Event') + '</b>' +
       '<span class="mc-sub">' + (e.at ? esc(new Date(e.at).toLocaleString()) : 'Unknown time') + (e.detail ? ' &middot; ' + esc(e.detail) : '') + '</span></div></li>';
   };
-  return '<section class="band"><div class="home-h"><h2 class="sec-h">Access log</h2>' +
+  return '<section class="band"><div class="home-h"><h2 class="sec-h">Access and support log</h2>' +
     (log && log.length ? '<div class="mc-act"><button class="btn sm" data-act="admin-clear-errlog" data-id="' + esc(S.adminSel) + '"' + (S.canWrite ? '' : ' disabled') + '>Clear log</button></div>' : '') + '</div>' +
-    '<p class="off-note">When this account went read-only, or was suspended or unsuspended, most recent first.</p>' +
+    '<p class="off-note">When this account went read-only, was suspended or unsuspended, or an admin opened or ended a support session in one of its meets, most recent first.</p>' +
     (log === null ? '<p class="off-note">Loading&hellip;</p>' : (log.length ? '<ul class="mlist">' + log.map(row).join('') + '</ul>' : '<p class="off-note">Nothing on record.</p>')) + '</section>';
 }
 async function adminClearErrlog(uid){
@@ -4475,7 +4519,7 @@ function adminHTML(){
   if (S.adminSel) return '<div class="home">' + adminDetailHTML() + '</div>';
   var q = S.adminSearch.trim().toLowerCase();
   var rows = S.adminAccounts === null ? null : S.adminAccounts.filter(function(a){ return !q || (a.name || '').toLowerCase().indexOf(q) >= 0 || (a.email || '').toLowerCase().indexOf(q) >= 0; });
-  return '<div class="home"><section class="band"><button type="button" class="btn sm" data-act="admin-back">&lsaquo; Your meets</button>' +
+  return '<div class="home">' + supportBannerHTML() + '<section class="band"><button type="button" class="btn sm" data-act="admin-back">&lsaquo; Your meets</button>' +
     '<div class="home-h" style="margin-top:10px"><h2 class="sec-h">All accounts' + (S.adminAccounts ? ' <span class="count">' + S.adminAccounts.length + '</span>' : '') + '</h2>' +
     '<div class="mc-act">' + (dl ? '<button class="btn" data-act="admin-export">Export CSV</button>' : '') + '</div></div>' +
     '<input class="qr-link" id="admin-search" placeholder="Search by name or email" value="' + esc(S.adminSearch) + '" data-f="admin-search">' +
@@ -5008,7 +5052,7 @@ function renderRaceBar(){
     var jo = S.event.judges[S.official - 1];
     h += '<div class="off-banner"><span>Officiating as <b>' + jtitle(S.official) + '</b>' + (jo.name ? ', ' + esc(jo.name) : '') + '</span><button type="button" class="btn sm" data-act="off-exit">Exit</button></div>';
   }
-  if (S.fromAdmin) h += '<div class="off-banner"><span>Viewing as <b>admin</b>: read-only, not your meet.</span><button type="button" class="btn sm" data-act="home">Back to admin</button></div>';
+  if (S.fromAdmin) h += inSupport() ? supportBannerHTML() : '<div class="off-banner"><span>Viewing as <b>admin</b>: read-only, not your meet.</span><button type="button" class="btn sm" data-act="home">Back to admin</button></div>';
   if (S.otherDevice) h += '<div class="off-banner warn-banner"><span>Another device also appears to be recording as <b>' + jtitle(S.otherDevice) + '</b> right now. Only one device should record for a position at a time, or entries from one may overwrite the other\'s.</span><button type="button" class="btn sm" data-act="other-device-dismiss">Dismiss</button></div>';
   if (inHeats() && S.tab !== 'howto') {
     var ids = S.official ? officiatingIds(S.official) : null, groups = '';
@@ -5352,7 +5396,8 @@ function howtoHTML(){
       '<li>Export meet data on the Setup tab saves a meet as a backup file. Import from file on My meets restores it, in this copy of the app or another.</li>' +
       '<li>The DQ Board, on the Setup tab, is a public scoreboard for a TV or projector: every athlete&rsquo;s hip or bib # and red cards, in number order, with no sign-in needed. Cast the link to a Chromecast from Chrome, or open it full-screen over HDMI. It sizes its own text to fill the screen automatically; set Rows per column there to fix it at a specific number of rows instead, for example to force bigger text on a small field. An athlete&rsquo;s number turns red once they are disqualified &mdash; either by reaching the red card count for a DQ, or by a last 100m red card from a supervisory Chief Judge, even with only that one card.</li>' +
       '<li>The Penalty Zone Board works the same way, but lives on the Penalty Zone tab: it shows who is in the Penalty Zone right now, each with a live countdown, instead of the whole field&rsquo;s red cards.</li>' +
-      '<li>An admin can open Admin from My meets to browse every account and see the meets they own. From there, an admin can archive or restore any meet, reset an official&rsquo;s codes on it, and suspend or lift the suspension on an account &mdash; all without needing that account&rsquo;s owner. Open, on a meet, shows it read-only, with the same Export PDF and Export meet data tools its owner has, so an admin can pull a copy of anyone&rsquo;s results without changing anything; a banner marks the view and the back button returns to Admin. Editing someone else&rsquo;s meet setup directly, and deleting a meet or a login outright, are not offered here. The first account ever created becomes an admin automatically, and any admin can make or remove others from that screen.</li>' +
+      '<li>An admin can open Admin from My meets to browse every account and see the meets they own. From there, an admin can archive or restore any meet, reset an official&rsquo;s codes on it, and suspend or lift the suspension on an account &mdash; all without needing that account&rsquo;s owner. Open, on a meet, shows it read-only, with the same Export PDF and Export meet data tools its owner has, so an admin can pull a copy of anyone&rsquo;s results without changing anything; a banner marks the view and the back button returns to Admin. Deleting a meet or a login outright is not offered here. The first account ever created becomes an admin automatically, and any admin can make or remove others from that screen.</li>' +
+      '<li>Open in support mode, beside Open on a meet, puts that meet on the admin&rsquo;s device live instead &mdash; the same as its own owner has it, not read-only &mdash; so an admin can fix a setup mistake or enter something on an official&rsquo;s behalf. A banner stays up the whole time, with End session to leave; opening and ending a session is logged on that account, visible in its Access and support log beneath its meet list. Leaving for the admin screen without ending the session keeps it open, with a Go to meet button to come back to it.</li>' +
       '<li>Edit name, next to your name on My meets, lets you choose what is shown there instead of whatever your sign-in provided &mdash; useful if it shows an email address or an unfamiliar name. It changes everywhere your name appears, including the admin screen. Clear the box to go back to your sign-in&rsquo;s own name.</li>' +
     '</ul></details>' +
 
@@ -7109,6 +7154,11 @@ document.addEventListener('click', function(e){
     case 'admin-restore-meet': adminArchiveMeet(b.dataset.uid, b.dataset.id, false); break;
     case 'admin-reset-codes': confirmDlg('Create new codes?', 'This replaces the code for every official on this meet. Every earlier QR code and typed code stops working, including on devices using one right now.', 'Create new codes', function(){ adminResetCodes(b.dataset.uid, b.dataset.id); }); break;
     case 'admin-open-meet': S.fromAdmin = true; LS.set(KEY + 'official', ''); openMeet(b.dataset.uid, b.dataset.id); break;
+    case 'admin-open-support':
+      confirmDlg('Open in support mode?', 'You will be working live in &ldquo;' + esc(b.dataset.name || 'this meet') + '&rdquo;, which belongs to ' + esc(b.dataset.acctname || 'this account') + '. Entries you make are saved to their meet and shown to their officials, and this is logged on their account. End session, from the banner at the top, returns you here at any time.', 'Open in support mode', function(){ adminOpenSupport(b.dataset.uid, b.dataset.id, b.dataset.acctname, b.dataset.acctemail, b.dataset.name); });
+      break;
+    case 'resume-support': resumeSupport(); break;
+    case 'end-support': confirmDlg('End the support session?', 'Your changes are already saved to &ldquo;' + esc(S.support ? S.support.meetName : 'the meet') + '&rdquo;. You return to the admin screen.', 'End session', function(){ endSupport(); }); break;
     case 'admin-export': adminExportCsv(); break;
     case 'signup': signUp(); break;
     case 'send-link': {
