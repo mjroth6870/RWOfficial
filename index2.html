@@ -5357,19 +5357,27 @@ function howtoHTML(){
       '<li>Enter athlete information on the Recorder tab only. It fills in every other tab.</li>' +
       '<li>Every athlete needs a name and the numbers chosen under Athlete identification on the Setup tab (hip/lane # and/or bib #).</li>' +
       '<li>Paste athlete list, beside Add athlete, also accepts a start list copied from a results website. With a header row, its columns are matched by name rather than by position &mdash; Lane counts the same as Hip, Bib is kept if the website has it, and other columns such as team or seed time are ignored. In a heats meet, it adds to whichever race is currently open, so switch races first to bring in another.</li>' +
-      '<li>Use Export PDF on the Recorder, Red Cards or Penalty Zone tabs to keep a copy of the race. The Red cards column marks athletes PZ (penalty served) and DQ. In a heats meet, each export covers the race currently open; switch races to export another.</li>' +
+      '<li>Use Export PDF on the Recorder, Red Cards or Penalty Zone tabs to keep a copy of the race. The Red cards column marks athletes PZ (penalty served) and DQ. In a heats meet, each export covers the race currently open; switch races to export another. To hand the referee and timing a report of just the DQ&rsquo;d and penalized athletes for sign-off, use Export PDF on the Timer Notification tab instead &mdash; see Timer Notification below.</li>' +
     '</ul></details>' +
 
     '<details class="rule"><summary><h3>' + ICON_CHEV + 'Red Cards<small>Red Cards tab</small></h3></summary><ul>' +
-      '<li>Use the Red Cards tab during the meet to track red cards and run the DQ Board efficiently.</li>' +
+      '<li>Use the Red Cards tab during the meet to monitor the race live: every confirmed red card syncs here from the judges&rsquo; own tabs as soon as they confirm it, so the Recorder can watch it run and confirm the correct marks are showing &mdash; and, in turn, that the same marks are showing correctly on the DQ Board.</li>' +
       '<li>It shows each judge&rsquo;s red card and its time of day for every athlete. Yellow paddles appear only on the Recorder tab. Athletes who reach the Penalty Zone count are marked <b>PZ</b>, and athletes who reach the DQ count are marked <b>DQ</b>.</li>' +
+    '</ul></details>' +
+
+    '<details class="rule"><summary><h3>' + ICON_CHEV + 'Timer Notification<small>Timer Notification tab</small></h3></summary><ul>' +
+      '<li>Timer Notification is on by default; turn it off under Race format on the Setup tab if the meet does not need it. This is the report to produce for the referee and timing after the race: who was disqualified, and who still owes Penalty Zone time added to their result.</li>' +
+      '<li>An athlete is added here automatically &mdash; nothing needs to be entered by hand. An athlete appears once a DQ notification time is entered on Judge 1&rsquo;s (the Chief Judge&rsquo;s), AC1&rsquo;s or AC2&rsquo;s tab, or once Add PZ time is checked for them on the Penalty Zone tab.</li>' +
+      '<li>For each athlete listed, choose the Rule # that applies and, if they still owe Penalty Zone time, the PZ time to add. Meet details at the top (date, event, distance, division name, start time) fill in from the Setup tab; fill in whichever are still blank.</li>' +
+      '<li>Use Export PDF to produce the Timer DQ &amp; PZ Notification form: every DQ&rsquo;d or penalized athlete with the rule applied and the Penalty Zone time to add, a rules-reference grid, and signature lines for the Referee, Chief Judge and Recorder. Print it, or hand the PDF itself, to the referee for sign-off and to timing so the Penalty Zone time still owed can be applied to each athlete&rsquo;s result. In a heats meet, each export covers the race currently open; switch races to export another.</li>' +
     '</ul></details>' +
 
     '<details class="rule"><summary><h3>' + ICON_CHEV + 'Judges<small>Tabs 1 to 9</small></h3></summary><ul>' +
       '<li>Each judge works only in their own tab.</li>' +
-      '<li><span class="sym">&gt;</span> <span class="sym">~</span> Yellow paddle: tap the Yellow &gt; or Yellow ~ button itself to record the current time for that paddle; it then shows the time beside it and locks. Tap it again to unlock and change it, or to clear it if it has not locked yet.</li>' +
-      '<li><span class="sym r">&gt;</span> <span class="sym r">~</span> Red card: choose the violation, then enter the time of day.</li>' +
-      '<li>Time of day fields (red card, DQ notification) take a number only, like 931 for 9:31 or 1405 for 2:05 pm. Tap the clock button to fill in the current time.</li>' +
+      '<li><span class="sym">&gt;</span> <span class="sym">~</span> Yellow paddle: tap the Yellow &gt; or Yellow ~ button itself &mdash; the symbol is the button &mdash; to record the current time for that paddle immediately. A confirmation popup then shows the call and its time; confirming it locks the call in and sends it to the Recorder. Tap the symbol again to unlock and change it, or to clear it if it has not been confirmed yet.</li>' +
+      '<li><span class="sym r">&gt;</span> <span class="sym r">~</span> Red card: tap the &gt; or ~ button itself the same way &mdash; it records the current time immediately, no separate time entry needed. The same confirmation popup appears; confirming locks the card in and sends it to the Recorder. Tap it again (once unlocked) to change it.</li>' +
+      '<li>Every yellow paddle and red card goes through this confirm step before it locks and reaches the Recorder, so a judge always sees exactly what they are about to record before it counts.</li>' +
+      '<li>DQ notification (Judge 1, AC1, AC2) is a plain time of day field, not a locking call: take a number only, like 931 for 9:31 or 1405 for 2:05 pm, or tap the clock button to fill in the current time.</li>' +
       '<li>The symbols are &gt; for bent knee and ~ for loss of contact.</li>' +
       '<li>Judge 1, the Chief Judge, also has a DQ notification field: the time of day an athlete is told they are disqualified and removed from the race.</li>' +
       '<li>AC1 and AC2 are optional extra positions. Turn them on under Judges in this race, and give each a QR code like any judge. For now they only enter DQ notifications. Those appear with the Chief Judge&rsquo;s on every tab and export, marked AC1 or AC2. They are not on the Recorder or Red Cards sheets.</li>' +
@@ -5942,7 +5950,7 @@ function timeField(n, a, k, label, val, kind, locked){
   var stampIcon = locked ? ICON_LOCK : (val ? ICON_X : ICON_CLOCK);
   return '<div class="fld"><span class="lb ' + lbCls + '">' + lab + '</span>' +
     '<div class="tf ' + {y:'ty', r:'tr', n:'tn'}[kind] + (val ? ' filled' : '') + (locked ? ' locked' : '') + '">' +
-      '<input class="tin" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" placeholder="Time" value="' + esc(val) + '"' +
+      '<input class="tin" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" placeholder="Time" value="' + esc(fmtEnt(val)) + '"' +
         ' data-bind="ent" data-n="' + n + '" data-aid="' + a.id + '" data-k="' + k + '" data-f="ent:' + n + ':' + a.id + ':' + k + '"' +
         ' aria-label="' + lab + ' time of day for ' + esc(athTag(a)) + ' ' + esc(a.name) + '"' + dis + '>' +
       '<button type="button" class="stamp" data-act="' + stampAct + '" data-n="' + n + '" data-aid="' + a.id + '" data-k="' + k + '" data-f="st:' + n + ':' + a.id + ':' + k + '" data-has="' + (val ? 1 : 0) + '" aria-label="' + stampAria + '" title="' + stampAria + '"' + stampDis + '>' + stampIcon + '</button>' +
