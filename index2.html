@@ -63,6 +63,7 @@ button[disabled],input[disabled]{cursor:not-allowed}
 .top-row1{display:flex;align-items:center;justify-content:space-between;gap:8px 20px;flex-wrap:wrap}
 .brand{display:flex;align-items:center;gap:10px}
 .brand-by{font:400 13px/1 var(--sans);color:var(--muted);letter-spacing:0;white-space:nowrap}
+.brand-ver{margin-left:4px;font-variant-numeric:tabular-nums}
 .brand h1{margin:0;font:700 26px/1 var(--cond);letter-spacing:.01em}
 .evline{display:flex;align-items:center;flex-wrap:wrap;gap:4px 14px;min-height:20px}
 .ev-name{font:600 20px/1.1 var(--cond)}
@@ -756,7 +757,7 @@ main{min-width:0}
           <path d="M 131 47 C 137 28 150 20 158 27 C 166 34 169 54 177 60 C 185 66 193 61 199 49" fill="none" stroke="var(--ink)" stroke-width="15.5"/>
           <circle cx="110" cy="118" r="50" fill="var(--red)" stroke="var(--ink)" stroke-width="2.2"/>
         </svg>
-        <h1>Race Walk Officiating <span class="brand-by">by WalkJudge.com</span></h1>
+        <h1>Race Walk Officiating <span class="brand-by">by WalkJudge.com</span> <span class="brand-by brand-ver" id="appver" title="App version"></span></h1>
       </div>
       <div id="sync" role="status" aria-live="polite"></div>
     </div>
@@ -3387,6 +3388,7 @@ var S = {
   mainExists: null,               // whether the meet document was found (null = not checked yet)
   isAdmin: false,                 // this account can open the admin screen (Firebase: has an admins/<uid> record; Claude-hosted: can edit this artifact)
   adminAccounts: null,             // every account, once the admin screen has loaded them
+  adminMeetCounts: {},             // uid -> {total, archived}: how many meets each account has created, filled in live on the admin screen
   adminSearch: '',
   adminSel: null,                 // the uid of the account currently open in the admin screen, if any
   adminSelMeets: null,             // that account's meets, once loaded
@@ -4009,7 +4011,7 @@ async function signOutNow(){
   if (mySub) { try { mySub(); } catch(e){} mySub = null; }
   if (adminSub) { try { adminSub(); } catch(e){} adminSub = null; }
   if (suspSub) { try { suspSub(); } catch(e){} suspSub = null; }
-  S.isAdmin = false; S.adminAccounts = null; S.adminSel = null; S.adminSelMeets = null; S.adminSelErrlog = null; S.adminAdmins = null; S.suspended = false; S.fromAdmin = false;
+  adminStopCounts(); S.isAdmin = false; S.adminAccounts = null; S.adminSel = null; S.adminSelMeets = null; S.adminSelErrlog = null; S.adminAdmins = null; S.suspended = false; S.fromAdmin = false;
   S.support = null; SS.remove(KEY + 'support');
   S.screen = 'signin'; try { if (location.hash) location.hash = ''; } catch(e){}
   render();
@@ -4368,6 +4370,37 @@ function meetCardHTML(m, archived){
 }
 /* ---------- Admin screen: every account, and (Firebase) who else is an admin ---------- */
 var adminAccSub = null, adminMeetsSub = null, adminAdminsSub = null, adminErrlogSub = null;
+// How many meets each account has created: one live count per account, started as the account list loads. Archived
+// meets still count (they were created); the row shows how many of the total are archived. Redraws are batched so a
+// long list of accounts filling in does not redraw (or steal focus from the search box) once per account.
+var adminCountSubs = {}, adminCountTimer = null;
+function adminWatchCounts(){
+  (S.adminAccounts || []).forEach(function(a){
+    if (adminCountSubs[a.uid]) return;
+    try {
+      adminCountSubs[a.uid] = db.collection('cfg/' + a.uid + '/meets').onSnapshot(function(sn){
+        var arch = 0; sn.docs.forEach(function(d){ var x = d.data() || {}; if (x.archived === true) arch++; });
+        S.adminMeetCounts[a.uid] = {total:sn.docs.length, archived:arch};
+        if (adminCountTimer) return;
+        adminCountTimer = setTimeout(function(){
+          adminCountTimer = null;
+          if (S.screen === 'admin' && !S.adminSel) { var ui = captureUI(); render(); restoreUI(ui); }
+        }, 250);
+      }, function(){ S.adminMeetCounts[a.uid] = null; });
+    } catch(e){ S.adminMeetCounts[a.uid] = null; }
+  });
+}
+function adminStopCounts(){
+  Object.keys(adminCountSubs).forEach(function(u){ try { adminCountSubs[u](); } catch(e){} });
+  adminCountSubs = {}; S.adminMeetCounts = {};
+  if (adminCountTimer) { clearTimeout(adminCountTimer); adminCountTimer = null; }
+}
+function adminMeetCountText(uid){
+  var c = S.adminMeetCounts[uid];
+  if (c === undefined) return 'counting meets&hellip;';
+  if (c === null) return 'meets unavailable';
+  return c.total + (c.total === 1 ? ' meet' : ' meets') + ' created' + (c.archived ? ' (' + c.archived + ' archived)' : '');
+}
 function goAdmin(){
   if (!S.isAdmin) return;
   S.screen = 'admin'; S.adminSel = null; S.adminSelMeets = null; S.adminSelErrlog = null;
@@ -4376,6 +4409,7 @@ function goAdmin(){
       adminAccSub = db.collection('accounts').onSnapshot(function(sn){
         S.adminAccounts = sn.docs.map(function(d){ var x = d.data() || {}; return {uid:d.id, name:str(x.name), email:x.email || '', createdAt:str(x.createdAt), lastSeen:str(x.lastSeen), suspended:x.suspended === true}; })
           .sort(function(a, b){ return (b.lastSeen || '').localeCompare(a.lastSeen || ''); });
+        adminWatchCounts();
         if (S.screen === 'admin') render();
       }, function(){ S.adminAccounts = []; if (S.screen === 'admin') render(); });
     } catch(e){ S.adminAccounts = []; }
@@ -4458,7 +4492,7 @@ async function adminResetCodes(uid, meetId){
 function adminAccountRowHTML(a){
   var isMe = a.uid === S.acct.uid, isAdm = S.standalone && S.adminAdmins && S.adminAdmins.indexOf(a.uid) >= 0;
   return '<li class="mcard admin-row' + (a.suspended ? ' susp' : '') + '"><div class="mc-main"><b class="mc-name">' + (esc(a.name) || 'Unnamed account') + (isAdm ? ' <span class="jchip ac" title="Admin">A</span>' : '') + (a.suspended ? ' <span class="stx dq" title="Suspended">Suspended</span>' : '') + '</b>' +
-    '<span class="mc-sub">' + (a.email ? esc(a.email) : 'No email shared') + (a.lastSeen ? ' &middot; last seen ' + esc(fmtDate(a.lastSeen.slice(0, 10))) : '') + '</span></div>' +
+    '<span class="mc-sub">' + (a.email ? esc(a.email) : 'No email shared') + ' &middot; <b>' + adminMeetCountText(a.uid) + '</b>' + (a.lastSeen ? ' &middot; last seen ' + esc(fmtDate(a.lastSeen.slice(0, 10))) : '') + '</span></div>' +
     '<div class="mc-act"><button class="btn" data-act="admin-open" data-id="' + esc(a.uid) + '">View meets</button>' +
     (S.standalone && !isMe ? '<button class="btn" data-act="admin-toggle-admin" data-id="' + esc(a.uid) + '" data-v="' + (isAdm ? '0' : '1') + '"' + (S.canWrite ? '' : ' disabled') + '>' + (isAdm ? 'Remove admin' : 'Make admin') + '</button>' : '') +
     (!isMe ? '<button class="btn" data-act="admin-toggle-suspend" data-id="' + esc(a.uid) + '" data-v="' + (a.suspended ? '0' : '1') + '"' + (S.canWrite ? '' : ' disabled') + '>' + (a.suspended ? 'Lift suspension' : 'Suspend') + '</button>' : '') + '</div></li>';
@@ -4528,7 +4562,7 @@ function adminHTML(){
 }
 async function adminExportCsv(){
   if (!dl || !S.adminAccounts) return;
-  var rows = [['Name', 'Email', 'Created', 'Last seen']].concat(S.adminAccounts.map(function(a){ return [a.name, a.email, a.createdAt, a.lastSeen]; }));
+  var rows = [['Name', 'Email', 'Created', 'Last seen', 'Meets created', 'Meets archived']].concat(S.adminAccounts.map(function(a){ var c = S.adminMeetCounts[a.uid]; return [a.name, a.email, a.createdAt, a.lastSeen, c ? c.total : '', c ? c.archived : '']; }));
   var csv = rows.map(function(r){ return r.map(function(v){ v = str(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }).join(','); }).join('\r\n');
   try { await dl.save({filename:'accounts.csv', data:csv}); toast('Accounts saved.'); } catch(e){ toast('Could not save the file in this view.'); }
 }
@@ -7408,7 +7442,11 @@ window.addEventListener('resize', fitGrid);
 /* ================================================================
    Start
    ================================================================ */
+// App version shown in the header, just right of "by WalkJudge.com". Bump this on every push: the build number as a
+// decimal, so build 127 was 1.27, build 128 is 1.28, build 129 will be 1.29, and so on.
+var APP_VERSION = '1.28';
 (function init(){
+  var verEl = document.getElementById('appver'); if (verEl) verEl.textContent = 'v' + APP_VERSION;
   var h = ''; try { h = (location.hash || '').slice(1); } catch(e){}
   var saved = LS.get(KEY + 'tab');
   var hp = h.split('/'), po = parseOfficial(h), bo = parseBoard(h);
