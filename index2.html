@@ -417,6 +417,12 @@ thead .cin{font-weight:600;height:100%;text-align:center;color:var(--ink)}
 .mlist{list-style:none;margin:0;padding:0;display:grid;gap:8px}
 .mcard{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:10px 12px;background:var(--surface);border:1px solid var(--line);border-radius:10px}
 .admin-row.susp{background:var(--red-soft);border-color:var(--red)}
+@media (min-width:761px){      /* the account's three buttons stay on the same line as its name, instead of dropping to a second row: the name and details take the leftover width and wrap inside it. Not on phones (below 761px the buttons are sized large for touch and three of them would not fit across, so there they still wrap) */
+  .admin-row{flex-wrap:nowrap}
+  .admin-row .mc-main{flex:1 1 0}
+  .admin-row .mc-act{flex:none;flex-wrap:nowrap}
+  .admin-row .mc-act .btn{white-space:nowrap}
+}
 .mlist.arch .mcard{background:var(--surface-2)}
 .mc-main{display:grid;min-width:0}
 .mc-name{font-size:17px;overflow-wrap:anywhere}
@@ -7444,7 +7450,7 @@ window.addEventListener('resize', fitGrid);
    ================================================================ */
 // App version shown in the header, just right of "by WalkJudge.com". Bump this on every push: the build number as a
 // decimal, so build 127 was 1.27, build 128 is 1.28, build 129 will be 1.29, and so on.
-var APP_VERSION = '1.28';
+var APP_VERSION = '1.29';
 (function init(){
   var verEl = document.getElementById('appver'); if (verEl) verEl.textContent = 'v' + APP_VERSION;
   var h = ''; try { h = (location.hash || '').slice(1); } catch(e){}
