@@ -4578,6 +4578,7 @@ function homeHTML(){
   return '<div class="home">' +
     '<section class="band"><div class="home-h"><h2 class="sec-h">Your meets</h2><div class="mc-act"><button class="btn" data-act="import-pick"' + (S.canWrite && !S.suspended ? '' : ' disabled') + '>Import from file</button><button class="btn primary" data-act="new-meet"' + (S.canWrite && !S.suspended ? '' : ' disabled') + '>New meet</button></div></div><input type="file" id="imp-file" accept=".json,application/json" hidden>' +
     acctCardHTML() +
+    '<p class="lead home-intro">To begin using Walk Judge, use the New Meet button to create for your event. Setup instructions are located on the How To tab.</p>' +
     (S.suspended ? '<p class="warn">An admin has suspended this account. You can still see your meets, but cannot change them, start a new one, or give out new codes, until it is lifted.</p>' : '') +
     (act.length ? '<ul class="mlist">' + act.map(function(m){ return meetCardHTML(m, false); }).join('') + '</ul>' : '<p class="off-note">You have no active meets. Choose New meet to set one up.</p>') + '</section>' +
     (S.legacyFound ? '<section class="band"><h2 class="sec-h">A meet from before accounts</h2><p class="off-note">' + (S.legacyName ? '&ldquo;' + esc(S.legacyName) + '&rdquo; was set up before accounts existed.' : 'A meet was set up before accounts existed.') + ' Import it into your account to keep working on it. Its old QR codes stop working, and the new ones carry over.</p><div class="toolbar"><button class="btn" data-act="import-legacy"' + (S.canWrite ? '' : ' disabled') + '>Import this meet</button></div></section>' : '') +
@@ -7450,7 +7451,7 @@ window.addEventListener('resize', fitGrid);
    ================================================================ */
 // App version shown in the header, just right of "by WalkJudge.com". Bump this on every push: the build number as a
 // decimal, so build 127 was 1.27, build 128 is 1.28, build 129 will be 1.29, and so on.
-var APP_VERSION = '1.29';
+var APP_VERSION = '1.30';
 (function init(){
   var verEl = document.getElementById('appver'); if (verEl) verEl.textContent = 'v' + APP_VERSION;
   var h = ''; try { h = (location.hash || '').slice(1); } catch(e){}
