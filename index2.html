@@ -353,6 +353,7 @@ table.mx{border-collapse:separate;border-spacing:0;table-layout:fixed;width:max-
 .stx{font:700 13px/1 var(--sans);font-style:normal;margin-left:8px;padding:4px 7px;border-radius:4px;vertical-align:middle}
 .stx.dq{background:var(--red);color:var(--on-red)}
 .stx.pit{background:var(--ink);color:var(--bg)}
+.stx.test{background:var(--blue-soft);color:var(--blue-ink);border:1px solid var(--blue)}
 .mx tfoot td{position:sticky;bottom:0;z-index:3;height:42px;background:var(--surface-2);border-top:2px solid var(--ink);font-weight:700}
 .mx tfoot td.l4{z-index:5}
 .mx td.tlab{z-index:5;text-align:right;padding-right:10px;color:var(--muted);font-weight:600}
@@ -4017,7 +4018,7 @@ async function signOutNow(){
   if (mySub) { try { mySub(); } catch(e){} mySub = null; }
   if (adminSub) { try { adminSub(); } catch(e){} adminSub = null; }
   if (suspSub) { try { suspSub(); } catch(e){} suspSub = null; }
-  adminStopCounts(); S.isAdmin = false; S.adminAccounts = null; S.adminSel = null; S.adminSelMeets = null; S.adminSelErrlog = null; S.adminAdmins = null; S.suspended = false; S.fromAdmin = false;
+  adminStopCounts(); testSeedChecked = false; S.isAdmin = false; S.adminAccounts = null; S.adminSel = null; S.adminSelMeets = null; S.adminSelErrlog = null; S.adminAdmins = null; S.suspended = false; S.fromAdmin = false;
   S.support = null; SS.remove(KEY + 'support');
   S.screen = 'signin'; try { if (location.hash) location.hash = ''; } catch(e){}
   render();
@@ -4083,7 +4084,8 @@ async function touchAccountDirectory(){
       createdAt: (prev && prev.createdAt) || now, lastSeen: now
     }));
     if (S.standalone && !prev) bootstrapFirstAdmin();      // the very first person to appear in the directory can become the first admin
-  } catch(e){}
+  } catch(e){ return; }
+  ensureTestMeet();
 }
 // Whether an admin has suspended this account: kept live, since a suspension should take effect without needing to reload.
 var suspSub = null;
@@ -4122,13 +4124,13 @@ function subscribeMyMeets(){
   if (mySub || !S.acct || !S.acct.uid) return;
   try {
     mySub = db.collection('cfg/' + S.acct.uid + '/meets').onSnapshot(function(sn){
-      S.meets = sn.docs.map(function(d){ var x = d.data() || {}; return {id:d.id, name:str(x.name), date:str(x.date), created:str(x.created), archived:x.archived === true, archivedAt:str(x.archivedAt), code:str(x.code)}; })
+      S.meets = sn.docs.map(function(d){ var x = d.data() || {}; return {id:d.id, name:str(x.name), date:str(x.date), created:str(x.created), archived:x.archived === true, archivedAt:str(x.archivedAt), code:str(x.code), test:x.test === true}; })
         .sort(function(a, b){ return (b.date || b.created).localeCompare(a.date || a.created) || b.created.localeCompare(a.created); });
       if (S.screen === 'home') render();
     }, function(){});
   } catch(e){}
 }
-function metaOf(m, over){ return Object.assign({name:m.name, date:m.date, created:m.created, archived:m.archived === true, archivedAt:m.archivedAt || '', code:m.code || ''}, over || {}); }
+function metaOf(m, over){ var o = {name:m.name, date:m.date, created:m.created, archived:m.archived === true, archivedAt:m.archivedAt || '', code:m.code || ''}; if (m.test === true) o.test = true; return Object.assign(o, over || {}); }
 async function signUp(){
   if (!S.acct || !S.acct.uid) return;
   try { await db.doc('data/users/' + S.acct.uid + '/account').set({created:new Date().toISOString(), v:1}); }
@@ -4221,7 +4223,7 @@ async function createMeet(name, date, archiveOthers){
   var uid = S.acct.uid, id = newId('m', 11), code = newId('', 5), now = new Date().toISOString();
   try {
     for (var k = 0; k < 5; k++) { var ex = await db.doc('join/' + code).get(); if (!(ex && ex.exists)) break; code = newId('', 5); }
-    var others = archiveOthers ? S.meets.filter(function(m){ return !m.archived; }) : [];
+    var others = archiveOthers ? S.meets.filter(function(m){ return !m.archived && !m.test; }) : [];
     var mm = normMeet({name:name, date:date}), rr = normRace({});
     await db.doc('cfg/' + uid + '/meets/' + id).set({name:name, date:date, created:now, archived:false, archivedAt:'', code:code});
     await db.doc('cfg/' + uid + '/meets/' + id + '/event/main').set(Object.assign(pick(mm, MEET_KEYS), pick(rr, RACE_KEYS)));
@@ -4229,7 +4231,7 @@ async function createMeet(name, date, archiveOthers){
     for (var i = 0; i < others.length; i++) await db.doc('cfg/' + uid + '/meets/' + others[i].id).set(metaOf(others[i], {archived:true, archivedAt:now}));
   } catch(e){ toast('The meet could not be created. This view may be read-only.'); return; }
   openMeet(uid, id);
-  if (archiveOthers && S.meets.some(function(m){ return !m.archived; })) toast('Your previous meets were archived.');
+  if (archiveOthers && S.meets.some(function(m){ return !m.archived && !m.test; })) toast('Your previous meets were archived.');
 }
 async function setListedArchived(m, v){
   try { await db.doc('cfg/' + S.acct.uid + '/meets/' + m.id).set(metaOf(m, {archived:v, archivedAt:v ? new Date().toISOString() : ''})); }
@@ -4259,6 +4261,82 @@ async function openLegacyMeet(){
   try { var mg = await db.doc('legacy/migrated').get(); if (mg && mg.exists) { toast('This meet has moved into an account. Ask the Recorder for a new QR code.'); return false; } } catch(e){}
   openMeet(null, 'legacy', true);
   return true;
+}
+// ---- The practice (test) event: every account gets one, so a new organizer can try the app without building a meet ----
+// It is an ordinary meet in the account's list, marked test:true. Every official position is filled in with a test
+// name (Judges 1-5 are on; Judges 6-9, AC1, AC2 and the PZM are named but off, and turning one on makes that test
+// official active). It holds a 10-athlete combined race, and three divisions of one heat each with 10 athletes each,
+// so switching Race format between Combined race and Separate heats by divisions shows the right athletes. Its owner can
+// archive it; only an admin can delete it (the app offers an owner no delete at all, and the Firestore rules refuse one).
+var TEST_ATHLETES = [
+  ['Avery Thompson','Brooke Martinez','Cameron Walsh','Dana Whitfield','Elliot Park','Farah Haddad','Gabe Okafor','Hana Lindqvist','Isaac Romero','Jules Bennett'],
+  ['Kai Nakamura','Lena Fischer','Marcus Bell','Nora Castillo','Owen Pierce','Priya Raman','Quinn Sullivan','Rosa Delgado','Sam Whitaker','Tessa Brandt'],
+  ['Uri Kessler','Vera Lindgren','Wes Abernathy','Ximena Ortiz','Yusuf Demir','Zoe Hartley','Aiden Frost','Bea Calloway','Cruz Montoya','Dee Fairchild'],
+  ['Eli Warner','Fern Okoye','Glen Harlow','Hollis Reed','Iris Valdez','Jonas Eklund','Kira Sandoval','Leo Marchetti','Mina Ostrowski','Nico Beaumont']
+];
+function buildTestMeetData(){
+  var nd = new Date(), today = nd.getFullYear() + '-' + ('0' + (nd.getMonth() + 1)).slice(-2) + '-' + ('0' + nd.getDate()).slice(-2);      // the organizer's own date, not UTC
+  var divNames = ['Women 40-44', 'Men 40-44', 'Women 45-49'];
+  var mm = normMeet({name:'Practice Meet (Test Event)', date:today, distance:'3000m', location:'Practice Track', courseLength:'400m',
+    raceMode:'combined', meetType:'usatfm', useHip:true, useBib:true, usePZ:false, useTimer:true, divCount:3,
+    divisions:divNames.map(function(n){ return {name:n, heats:1, custom:false}; })});
+  var offNames = [], i;
+  for (i = 1; i <= NMAIN; i++) offNames.push('Test Judge ' + i);
+  offNames.push('Test Assistant Chief 1', 'Test Assistant Chief 2', 'Test Penalty Zone Manager');
+  var races = {}, main = null;
+  var make = function(listIx, bibStart){
+    var judges = [], active = [], k;
+    for (k = 0; k < NJ; k++) { judges.push({name:offNames[k], cert:'Level 3'}); active.push(k < 5); }
+    var ath = TEST_ATHLETES[listIx].map(function(nm, q){ return {id:'t' + listIx + 'a' + (q + 1), hip:String(q + 1), bib:String(bibStart + q), name:nm}; });
+    return normRace({recorder:'Test Recorder', recorderCert:'Level 2', judges:judges, active:active, supervisory:false, last100:false, athletes:ath, dq:3, pit:0});
+  };
+  main = Object.assign(pick(mm, MEET_KEYS), pick(make(0, 101), RACE_KEYS));
+  for (i = 1; i <= 3; i++) races['d' + i + 'h1'] = pick(make(i, (i + 1) * 100 + 1), RACE_KEYS);
+  return {name:mm.name, date:mm.date, main:main, races:races};
+}
+async function writeTestMeet(uid){
+  var d = buildTestMeetData(), id = newId('m', 11), code = newId('', 5), now = new Date().toISOString(), base = 'cfg/' + uid + '/meets/' + id;
+  for (var k = 0; k < 5; k++) { var ex = await db.doc('join/' + code).get(); if (!(ex && ex.exists)) break; code = newId('', 5); }
+  await db.doc(base + '/event/main').set(d.main);
+  var rids = Object.keys(d.races);
+  for (var i = 0; i < rids.length; i++) await db.doc(base + '/races/' + rids[i]).set(d.races[rids[i]]);
+  try { await db.doc('join/' + code).set({owner:uid, meetId:id}); } catch(e){}
+  await db.doc(base).set({name:d.name, date:d.date, created:now, archived:false, archivedAt:'', code:code, test:true});      // last, so the meet only appears once it is complete
+  return id;
+}
+// Once per account: remembered on the account's directory entry (accounts/<uid>.testMeet), so an admin deleting it
+// does not bring it back, and a second device signing in at the same moment does not make a second one.
+var testSeedChecked = false;
+async function ensureTestMeet(){
+  if (testSeedChecked || !(S.acct && S.acct.uid) || (ME && ME.anon)) return;
+  testSeedChecked = true;
+  var uid = S.acct.uid;
+  try {
+    var sn = await db.doc('accounts/' + uid).get(), dir = (sn && sn.exists && sn.data()) || {};
+    if (dir.testMeet) return;
+    var have = (await readCollection('cfg/' + uid + '/meets')).filter(function(x){ return x.data && x.data.test === true; })[0];
+    var id = have ? have.id : await writeTestMeet(uid);
+    await db.doc('accounts/' + uid).set(Object.assign({}, dir, {testMeet:id}));
+  } catch(e){ testSeedChecked = false; }
+}
+// Admin only: removes a practice event, its races and its judge entries. Its owner cannot (there is no button, and the rules refuse).
+async function adminDeleteTestMeet(uid, meetId){
+  if (!S.isAdmin) return;
+  var m = (S.adminSelMeets || []).filter(function(x){ return x.id === meetId; })[0];
+  if (!m || !m.test) return;
+  var base = 'cfg/' + uid + '/meets/' + meetId, ent = 'ent/' + meetId;
+  try {
+    var races = await readCollection(base + '/races');
+    for (var i = 0; i < races.length; i++) {
+      try { var je = await readCollection(ent + '/races/' + races[i].id + '/judges'); for (var a = 0; a < je.length; a++) await db.doc(ent + '/races/' + races[i].id + '/judges/' + je[a].id).delete(); } catch(e){}
+      await db.doc(base + '/races/' + races[i].id).delete();
+    }
+    try { var jm = await readCollection(ent + '/judges'); for (var b = 0; b < jm.length; b++) await db.doc(ent + '/judges/' + jm[b].id).delete(); } catch(e){}
+    await db.doc(base + '/event/main').delete();
+    await db.doc(base).delete();
+  } catch(e){ toast('That could not be deleted.'); return; }
+  logAccountEvent(uid, 'test_meet_deleted', 'Practice event deleted by admin ' + (S.acct ? S.acct.uid : '?') + '.');
+  toast('Practice event deleted.');
 }
 // Everything about a meet as plain data: its setup, each race, and every judge's entries. map turns a logical path into a stored one.
 async function collectMeet(map){
@@ -4370,7 +4448,7 @@ function signinHTML(){
 }
 function meetCardHTML(m, archived){
   var when = m.date ? esc(fmtDate(m.date)) : 'No date';
-  return '<li class="mcard"><div class="mc-main"><b class="mc-name">' + (esc(m.name) || 'Untitled meet') + '</b><span class="mc-sub">' + when + (archived && m.archivedAt ? ' &middot; archived ' + esc(fmtDate(m.archivedAt.slice(0, 10))) : '') + '</span></div>' +
+  return '<li class="mcard"><div class="mc-main"><b class="mc-name">' + (esc(m.name) || 'Untitled meet') + (m.test ? ' <span class="stx test" title="Sample data for practice">Practice</span>' : '') + '</b><span class="mc-sub">' + when + (archived && m.archivedAt ? ' &middot; archived ' + esc(fmtDate(m.archivedAt.slice(0, 10))) : '') + '</span></div>' +
     '<div class="mc-act"><button class="btn' + (archived ? '' : ' primary') + '" data-act="open-meet" data-id="' + esc(m.id) + '">' + (archived ? 'View' : 'Open') + '</button>' +
     '<button class="btn" data-act="' + (archived ? 'restore-meet' : 'archive-meet') + '" data-id="' + esc(m.id) + '"' + (S.canWrite && !S.suspended ? '' : ' disabled') + '>' + (archived ? 'Restore' : 'Archive') + '</button></div></li>';
 }
@@ -4385,8 +4463,8 @@ function adminWatchCounts(){
     if (adminCountSubs[a.uid]) return;
     try {
       adminCountSubs[a.uid] = db.collection('cfg/' + a.uid + '/meets').onSnapshot(function(sn){
-        var arch = 0; sn.docs.forEach(function(d){ var x = d.data() || {}; if (x.archived === true) arch++; });
-        S.adminMeetCounts[a.uid] = {total:sn.docs.length, archived:arch};
+        var arch = 0, tot = 0; sn.docs.forEach(function(d){ var x = d.data() || {}; if (x.test === true) return; tot++; if (x.archived === true) arch++; });      // the practice event every account gets is not counted
+        S.adminMeetCounts[a.uid] = {total:tot, archived:arch};
         if (adminCountTimer) return;
         adminCountTimer = setTimeout(function(){
           adminCountTimer = null;
@@ -4445,7 +4523,7 @@ function adminOpenAccount(uid){
   if (adminErrlogSub) { try { adminErrlogSub(); } catch(e){} adminErrlogSub = null; }
   try {
     adminMeetsSub = db.collection('cfg/' + uid + '/meets').onSnapshot(function(sn){
-      S.adminSelMeets = sn.docs.map(function(d){ var x = d.data() || {}; return {id:d.id, name:str(x.name), date:str(x.date), created:str(x.created), archived:x.archived === true, archivedAt:str(x.archivedAt), code:str(x.code)}; })
+      S.adminSelMeets = sn.docs.map(function(d){ var x = d.data() || {}; return {id:d.id, name:str(x.name), date:str(x.date), created:str(x.created), archived:x.archived === true, archivedAt:str(x.archivedAt), code:str(x.code), test:x.test === true}; })
         .sort(function(a, b){ return (b.date || b.created || '').localeCompare(a.date || a.created || ''); });
       if (S.adminSel === uid) render();
     }, function(){ S.adminSelMeets = []; if (S.adminSel === uid) render(); });
@@ -4510,13 +4588,14 @@ function adminAccountRowHTML(a){
 function adminMeetRowHTML(m, uid, acctName, acctEmail){
   var when = m.date ? esc(fmtDate(m.date)) : 'No date';
   var already = S.support && S.support.owner === uid && S.support.meetId === m.id;
-  return '<li class="mcard"><div class="mc-main"><b class="mc-name">' + (esc(m.name) || 'Untitled meet') + '</b><span class="mc-sub">' + when + (m.archived ? ' &middot; archived' : '') + '</span></div>' +
+  return '<li class="mcard"><div class="mc-main"><b class="mc-name">' + (esc(m.name) || 'Untitled meet') + (m.test ? ' <span class="stx test" title="Practice event">Practice</span>' : '') + '</b><span class="mc-sub">' + when + (m.archived ? ' &middot; archived' : '') + '</span></div>' +
     '<div class="mc-act"><button class="btn" data-act="admin-open-meet" data-uid="' + esc(uid) + '" data-id="' + esc(m.id) + '" title="Open read-only, to use its Export CSV, PDF or meet data">Open</button>' +
     '<button class="btn" data-act="' + (already ? 'resume-support' : 'admin-open-support') + '" data-uid="' + esc(uid) + '" data-id="' + esc(m.id) + '" data-name="' + esc(m.name || 'this meet') + '" data-acctname="' + esc(acctName || 'this account') + '" data-acctemail="' + esc(acctEmail || '') + '"' + (S.canWrite ? '' : ' disabled') + ' title="Open live and work in it on their behalf. Logged on their account.">' + (already ? 'Go to meet' : 'Open in support mode') + '</button>' +
     (m.archived
       ? '<button class="btn" data-act="admin-restore-meet" data-uid="' + esc(uid) + '" data-id="' + esc(m.id) + '"' + (S.canWrite ? '' : ' disabled') + '>Restore</button>'
       : '<button class="btn" data-act="admin-archive-meet" data-uid="' + esc(uid) + '" data-id="' + esc(m.id) + '" data-name="' + esc(m.name || 'this meet') + '"' + (S.canWrite ? '' : ' disabled') + '>Archive</button>' +
         '<button class="btn" data-act="admin-reset-codes" data-uid="' + esc(uid) + '" data-id="' + esc(m.id) + '"' + (S.canWrite ? '' : ' disabled') + '>Reset codes</button>') +
+    (m.test ? '<button class="btn danger" data-act="admin-delete-test" data-uid="' + esc(uid) + '" data-id="' + esc(m.id) + '" data-name="' + esc(m.name || 'this practice event') + '"' + (S.canWrite ? '' : ' disabled') + ' title="Only an admin can delete a practice event">Delete</button>' : '') +
     '</div></li>';
 }
 function adminDetailHTML(){
@@ -4601,7 +4680,7 @@ function renderAccount(){
   renderPill();
 }
 function openNewMeetDialog(){
-  var hasActive = S.meets.some(function(m){ return !m.archived; });
+  var hasActive = S.meets.some(function(m){ return !m.archived && !m.test; });
   openDialog({
     title:'New meet',
     body:'<div class="dlg-form"><label class="dlg-l" for="nm-name">Meet name</label><input id="nm-name" class="qr-link" maxlength="80" placeholder="e.g. Spring Open" autocomplete="off">' +
@@ -5088,6 +5167,7 @@ function renderRaceBar(){
   var el = $('#racebar');
   if (!el) return;
   var h = '';
+  if (S.metaDoc && S.metaDoc.test) h += '<div class="off-banner"><span><b>Practice event.</b> This is sample data for trying the app. Under Race format on the Setup tab, switch between Combined race (10 athletes) and Separate heats by divisions (3 divisions of 10), and turn judges on or off under Judges in this race. You can archive it; only an admin can delete it.</span></div>';
   if (S.archived) h += '<div class="off-banner arch-banner"><span><b>This meet is archived.</b> It is read-only.</span>' + (S.acct && S.acct.mine ? '<button type="button" class="btn sm" data-act="restore-current">Restore meet</button>' : '') + '</div>';
   if (S.official) {
     var jo = S.event.judges[S.official - 1];
@@ -5381,6 +5461,7 @@ function howtoHTML(){
     '<p class="lead">One shared meet. Set it up on the Setup tab, then the Recorder adds the athletes, nine judges record what they see, and the Recorder and Red Cards tabs update as each entry is made.</p>' +
 
     '<details class="rule"><summary><h3>' + ICON_CHEV + 'Setup<small>Setup tab</small></h3></summary><ul>' +
+      '<li>Every account starts with a Practice Meet (Test Event) already set up, with every official named, a combined race of 10 athletes, and three divisions of 10 athletes each for separate heats. Use it to practice before building your own meet. Judges 6 to 9, AC1, AC2 and the PZM are named but off; turn one on to use that test official. You can archive it; only an admin can delete it.</li>' +
       '<li>Start on the Setup tab. Enter the meet name, date, race distance(s), location, course length and road course certification #, and choose Combined race or Separate heats by divisions.</li>' +
       '<li>Under Athlete identification, choose whether athletes are identified by hip # and/or bib #. Only what you choose is shown on the other tabs and in exports.</li>' +
       '<li>Enter the recorder&rsquo;s and each judge&rsquo;s name and cert # &amp; level. Judges see their own on their tab.</li>' +
@@ -7200,6 +7281,7 @@ document.addEventListener('click', function(e){
     }
     case 'admin-clear-errlog': confirmDlg('Clear this account\u2019s access log?', 'This removes what is currently shown. It cannot be undone.', 'Clear log', function(){ adminClearErrlog(b.dataset.id); }); break;
     case 'admin-archive-meet': confirmDlg('Archive ' + esc(b.dataset.name) + '?', 'It becomes read-only for everyone, including officials. It can be restored at any time.', 'Archive meet', function(){ adminArchiveMeet(b.dataset.uid, b.dataset.id, true); }); break;
+    case 'admin-delete-test': confirmDlg('Delete ' + esc(b.dataset.name) + '?', 'This permanently removes the practice event and everything entered in it. It will not be created again for this account. Its owner cannot delete it; only an admin can.', 'Delete practice event', function(){ adminDeleteTestMeet(b.dataset.uid, b.dataset.id); }); break;
     case 'admin-restore-meet': adminArchiveMeet(b.dataset.uid, b.dataset.id, false); break;
     case 'admin-reset-codes': confirmDlg('Create new codes?', 'This replaces the code for every official on this meet. Every earlier QR code and typed code stops working, including on devices using one right now.', 'Create new codes', function(){ adminResetCodes(b.dataset.uid, b.dataset.id); }); break;
     case 'admin-open-meet': S.fromAdmin = true; LS.set(KEY + 'official', ''); openMeet(b.dataset.uid, b.dataset.id); break;
@@ -7450,8 +7532,8 @@ window.addEventListener('resize', fitGrid);
    Start
    ================================================================ */
 // App version shown in the header, just right of "by WalkJudge.com". Bump this on every push: the build number as a
-// decimal, so build 127 was 1.27, build 128 is 1.28, build 129 will be 1.29, and so on.
-var APP_VERSION = '1.30';
+// decimal, so build 127 was 1.27, build 128 was 1.28, build 131 is 1.31, build 132 will be 1.32, and so on.
+var APP_VERSION = '1.31';
 (function init(){
   var verEl = document.getElementById('appver'); if (verEl) verEl.textContent = 'v' + APP_VERSION;
   var h = ''; try { h = (location.hash || '').slice(1); } catch(e){}
