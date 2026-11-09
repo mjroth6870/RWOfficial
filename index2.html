@@ -4018,7 +4018,7 @@ async function signOutNow(){
   if (mySub) { try { mySub(); } catch(e){} mySub = null; }
   if (adminSub) { try { adminSub(); } catch(e){} adminSub = null; }
   if (suspSub) { try { suspSub(); } catch(e){} suspSub = null; }
-  adminStopCounts(); testSeedChecked = false; S.isAdmin = false; S.adminAccounts = null; S.adminSel = null; S.adminSelMeets = null; S.adminSelErrlog = null; S.adminAdmins = null; S.suspended = false; S.fromAdmin = false;
+  adminStopCounts(); testSeedChecked = false; testSeedTries = 0; S.isAdmin = false; S.adminAccounts = null; S.adminSel = null; S.adminSelMeets = null; S.adminSelErrlog = null; S.adminAdmins = null; S.suspended = false; S.fromAdmin = false;
   S.support = null; SS.remove(KEY + 'support');
   S.screen = 'signin'; try { if (location.hash) location.hash = ''; } catch(e){}
   render();
@@ -4036,7 +4036,7 @@ async function ensureGuest(){
 async function loadAccount(){
   try { var sn = await db.doc('data/users/' + S.acct.uid + '/account').get(); S.acctDoc = !!(sn && sn.exists); applyCustomName(sn && sn.exists ? sn.data() : null); } catch(e){ S.acctDoc = false; }
   S.screen = S.acctDoc ? 'home' : 'signup';
-  if (S.acctDoc) { subscribeMyMeets(); touchAccountDirectory(); subscribeIsAdmin(); subscribeSuspended(); }
+  if (S.acctDoc) { subscribeMyMeets(); touchAccountDirectory(); subscribeIsAdmin(); subscribeSuspended(); ensureTestMeet(); }
   render();
   checkLegacy();
 }
@@ -4085,7 +4085,6 @@ async function touchAccountDirectory(){
     }));
     if (S.standalone && !prev) bootstrapFirstAdmin();      // the very first person to appear in the directory can become the first admin
   } catch(e){ return; }
-  ensureTestMeet();
 }
 // Whether an admin has suspended this account: kept live, since a suspension should take effect without needing to reload.
 var suspSub = null;
@@ -4136,7 +4135,7 @@ async function signUp(){
   try { await db.doc('data/users/' + S.acct.uid + '/account').set({created:new Date().toISOString(), v:1}); }
   catch(e){ toast('Your account could not be created. This view may be read-only.'); return; }
   S.acctDoc = true; S.screen = 'home'; subscribeMyMeets(); render();
-  touchAccountDirectory(); subscribeIsAdmin(); subscribeSuspended();
+  touchAccountDirectory(); subscribeIsAdmin(); subscribeSuspended(); ensureTestMeet();
 }
 function teardownMeet(){
   flushAll(); unsubRace(); teardownPresence(); presenceDismissSid = null;
@@ -4304,20 +4303,30 @@ async function writeTestMeet(uid){
   await db.doc(base).set({name:d.name, date:d.date, created:now, archived:false, archivedAt:'', code:code, test:true});      // last, so the meet only appears once it is complete
   return id;
 }
-// Once per account: remembered on the account's directory entry (accounts/<uid>.testMeet), so an admin deleting it
-// does not bring it back, and a second device signing in at the same moment does not make a second one.
-var testSeedChecked = false;
+// Once per account. The "already given" marker lives on the account's own private record (data/users/<uid>/account, which
+// every account has and can always write), and is mirrored on the directory entry when that is writable, so an admin
+// deleting the practice meet does not bring it back and a second device signing in at the same moment does not make a
+// second one. It runs straight from sign-in/sign-up (not from the directory write, which can fail on its own), and a
+// failed attempt is retried a few times and logged, instead of silently leaving the account without a practice meet.
+var testSeedChecked = false, testSeedTries = 0;
 async function ensureTestMeet(){
-  if (testSeedChecked || !(S.acct && S.acct.uid) || (ME && ME.anon)) return;
+  if (testSeedChecked || !(S.acct && S.acct.uid) || (ME && ME.anon) || !S.acctDoc) return;
   testSeedChecked = true;
-  var uid = S.acct.uid;
+  var uid = S.acct.uid, pPath = 'data/users/' + uid + '/account', dPath = 'accounts/' + uid;
   try {
-    var sn = await db.doc('accounts/' + uid).get(), dir = (sn && sn.exists && sn.data()) || {};
-    if (dir.testMeet) return;
+    var ps = await db.doc(pPath).get(), pdata = (ps && ps.exists && ps.data()) || {};
+    if (pdata.testMeet) return;
+    var dir = {}; try { var ds = await db.doc(dPath).get(); if (ds && ds.exists) dir = ds.data() || {}; } catch(e){}
+    if (dir.testMeet) { try { await db.doc(pPath).set(Object.assign({}, pdata, {testMeet:dir.testMeet})); } catch(e){} return; }
     var have = (await readCollection('cfg/' + uid + '/meets')).filter(function(x){ return x.data && x.data.test === true; })[0];
     var id = have ? have.id : await writeTestMeet(uid);
-    await db.doc('accounts/' + uid).set(Object.assign({}, dir, {testMeet:id}));
-  } catch(e){ testSeedChecked = false; }
+    await db.doc(pPath).set(Object.assign({}, pdata, {testMeet:id}));
+    try { await db.doc(dPath).set(Object.assign({}, dir, {testMeet:id})); } catch(e){}
+  } catch(e){
+    testSeedChecked = false;
+    logAccountEvent(uid, 'test_meet_failed', (e && (e.code || e.message)) || 'unknown');
+    if (++testSeedTries < 4) setTimeout(ensureTestMeet, 4000 * testSeedTries);
+  }
 }
 // Admin only: removes a practice event, its races and its judge entries. Its owner cannot (there is no button, and the rules refuse).
 async function adminDeleteTestMeet(uid, meetId){
@@ -7532,8 +7541,8 @@ window.addEventListener('resize', fitGrid);
    Start
    ================================================================ */
 // App version shown in the header, just right of "by WalkJudge.com". Bump this on every push: the build number as a
-// decimal, so build 127 was 1.27, build 128 was 1.28, build 131 is 1.31, build 132 will be 1.32, and so on.
-var APP_VERSION = '1.31';
+// decimal, so build 127 was 1.27, build 128 was 1.28, build 131 was 1.31, build 132 is 1.32, build 133 will be 1.33, and so on.
+var APP_VERSION = '1.32';
 (function init(){
   var verEl = document.getElementById('appver'); if (verEl) verEl.textContent = 'v' + APP_VERSION;
   var h = ''; try { h = (location.hash || '').slice(1); } catch(e){}
