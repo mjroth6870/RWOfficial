@@ -4293,14 +4293,17 @@ function buildTestMeetData(){
   for (i = 1; i <= 3; i++) races['d' + i + 'h1'] = pick(make(i, (i + 1) * 100 + 1), RACE_KEYS);
   return {name:mm.name, date:mm.date, main:main, races:races};
 }
-async function writeTestMeet(uid){
-  var d = buildTestMeetData(), id = newId('m', 11), code = newId('', 5), now = new Date().toISOString(), base = 'cfg/' + uid + '/meets/' + id;
-  for (var k = 0; k < 5; k++) { var ex = await db.doc('join/' + code).get(); if (!(ex && ex.exists)) break; code = newId('', 5); }
-  await db.doc(base + '/event/main').set(d.main);
-  var rids = Object.keys(d.races);
-  for (var i = 0; i < rids.length; i++) await db.doc(base + '/races/' + rids[i]).set(d.races[rids[i]]);
-  try { await db.doc('join/' + code).set({owner:uid, meetId:id}); } catch(e){}
-  await db.doc(base).set({name:d.name, date:d.date, created:now, archived:false, archivedAt:'', code:code, test:true});      // last, so the meet only appears once it is complete
+async function writeTestMeet(uid, existingId){
+  var d = buildTestMeetData(), id = existingId || newId('m', 11), code = newId('', 5), now = new Date().toISOString(), base = 'cfg/' + uid + '/meets/' + id, step = 'start';
+  try {
+    for (var k = 0; k < 5; k++) { var ex = await db.doc('join/' + code).get(); if (!(ex && ex.exists)) break; code = newId('', 5); }
+    // The meet's own entry first, the same order a new meet uses; an interrupted attempt is finished on the next try.
+    if (!existingId) { step = 'meet'; await db.doc(base).set({name:d.name, date:d.date, created:now, archived:false, archivedAt:'', code:code, test:true}); }
+    step = 'event'; await db.doc(base + '/event/main').set(d.main);
+    var rids = Object.keys(d.races);
+    for (var i = 0; i < rids.length; i++) { step = 'race ' + rids[i]; await db.doc(base + '/races/' + rids[i]).set(d.races[rids[i]]); }
+    step = 'join'; try { await db.doc('join/' + code).set({owner:uid, meetId:id}); } catch(e){}
+  } catch(e){ var er = new Error((e && (e.code || e.message)) || 'unknown'); er.step = step; throw er; }
   return id;
 }
 // Once per account. The "already given" marker lives on the account's own private record (data/users/<uid>/account, which
@@ -4319,12 +4322,14 @@ async function ensureTestMeet(){
     var dir = {}; try { var ds = await db.doc(dPath).get(); if (ds && ds.exists) dir = ds.data() || {}; } catch(e){}
     if (dir.testMeet) { try { await db.doc(pPath).set(Object.assign({}, pdata, {testMeet:dir.testMeet})); } catch(e){} return; }
     var have = (await readCollection('cfg/' + uid + '/meets')).filter(function(x){ return x.data && x.data.test === true; })[0];
-    var id = have ? have.id : await writeTestMeet(uid);
-    await db.doc(pPath).set(Object.assign({}, pdata, {testMeet:id}));
+    var complete = false;
+    if (have) { try { var es = await db.doc('cfg/' + uid + '/meets/' + have.id + '/event/main').get(); complete = !!(es && es.exists); } catch(e){} }
+    var id = complete ? have.id : await writeTestMeet(uid, have ? have.id : null);      // never rewrite a practice meet that is already filled in
+    try { await db.doc(pPath).set(Object.assign({}, pdata, {testMeet:id})); } catch(e){}      // the meet exists; a marker that did not save is covered by the check above
     try { await db.doc(dPath).set(Object.assign({}, dir, {testMeet:id})); } catch(e){}
   } catch(e){
     testSeedChecked = false;
-    logAccountEvent(uid, 'test_meet_failed', (e && (e.code || e.message)) || 'unknown');
+    logAccountEvent(uid, 'test_meet_failed', (e && e.step ? e.step + ': ' : '') + ((e && (e.code || e.message)) || 'unknown'));
     if (++testSeedTries < 4) setTimeout(ensureTestMeet, 4000 * testSeedTries);
   }
 }
@@ -7541,8 +7546,8 @@ window.addEventListener('resize', fitGrid);
    Start
    ================================================================ */
 // App version shown in the header, just right of "by WalkJudge.com". Bump this on every push: the build number as a
-// decimal, so build 127 was 1.27, build 128 was 1.28, build 131 was 1.31, build 132 is 1.32, build 133 will be 1.33, and so on.
-var APP_VERSION = '1.32';
+// decimal, so build 127 was 1.27, build 128 was 1.28, build 131 was 1.31, build 132 was 1.32, build 133 is 1.33, build 134 will be 1.34, and so on.
+var APP_VERSION = '1.33';
 (function init(){
   var verEl = document.getElementById('appver'); if (verEl) verEl.textContent = 'v' + APP_VERSION;
   var h = ''; try { h = (location.hash || '').slice(1); } catch(e){}
