@@ -622,6 +622,17 @@ main{min-width:0}
 /* ---------- Dialog + toast ---------- */
 .scrim{position:fixed;inset:0;background:rgba(8,12,16,.55);z-index:50}
 .dlg{position:fixed;z-index:51;left:50%;top:50%;transform:translate(-50%,-50%);width:min(520px,calc(100vw - 32px));max-height:calc(100vh - 48px);overflow:auto;background:var(--surface);border:1px solid var(--line-strong);border-radius:12px;padding:20px}
+.dlg.wide{width:min(940px,calc(100vw - 32px))}
+.ip-src{margin:0 0 10px;padding-left:18px;font-size:14px;color:var(--muted)}
+.ip-modes{display:flex;flex-direction:column;gap:8px;margin:10px 0}
+.ip-modes .chk small,.ip-opt small{display:block;color:var(--muted);font-weight:400}
+.ip-wrap{max-height:320px;overflow:auto;border:1px solid var(--line);border-radius:8px}
+.ip-tbl{width:100%;border-collapse:collapse;font-size:14px}
+.ip-tbl th,.ip-tbl td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}
+.ip-tbl th{position:sticky;top:0;background:var(--surface);font-size:12px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)}
+.ip-tbl .ip-dn{width:100%;min-width:190px;min-height:34px;padding:5px 8px;border:1px solid var(--line-strong);border-radius:6px;background:var(--surface);color:inherit;font:inherit}
+.ip-more{margin-top:10px}.ip-more summary{cursor:pointer;font-weight:700}
+.ip-opt{margin-top:10px}
 .dlg h2{margin:0 0 8px;font:700 26px/1.1 var(--cond)}
 .dlg .dlg-b p{margin:0 0 10px}
 .dlg textarea{width:100%;min-height:200px;padding:10px;border:1px solid var(--line-strong);border-radius:8px;background:var(--surface);font:15px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;resize:vertical}
@@ -5475,6 +5486,7 @@ function howtoHTML(){
     '<p class="lead">One shared meet. Set it up on the Setup tab, then the Recorder adds the athletes, nine judges record what they see, and the Recorder and Red Cards tabs update as each entry is made.</p>' +
 
     '<details class="rule"><summary><h3>' + ICON_CHEV + 'Setup<small>Setup tab</small></h3></summary><ul>' +
+      '<li>Import meet program, on the Setup tab, adds athletes from a HY-TEK Meet Manager, AthleticNET or DirectAthletics MeetPro file (or pasted text). Choose the events to bring in; with Separate heats by divisions, each event becomes a division and each heat a heat, so several races are set up at once. Nothing is removed, and athletes already listed are skipped.</li>' +
       '<li>Every account starts with a Practice Meet (Test Event) already set up, with every official named, a combined race of 10 athletes, and three divisions of 10 athletes each for separate heats. Use it to practice before building your own meet. Judges 6 to 9, AC1, AC2 and the PZM are named but off; turn one on to use that test official. You can archive it; only an admin can delete it.</li>' +
       '<li>Start on the Setup tab. Enter the meet name, date, race distance(s), location, course length and road course certification #, and choose Combined race or Separate heats by divisions.</li>' +
       '<li>Under Athlete identification, choose whether athletes are identified by hip # and/or bib #. Only what you choose is shown on the other tabs and in exports.</li>' +
@@ -5819,6 +5831,7 @@ function setupHTML(){
       '<div class="field"><label for="f-clen">Course length</label><input id="f-clen" data-bind="ev" data-k="courseLength" data-f="ev:courseLength" value="' + esc(ev.courseLength) + '" placeholder="e.g. 1 km loop" autocomplete="off"' + dis + '></div>' +
       '<div class="field"><label for="f-ccert">Road course certification #</label><input id="f-ccert" data-bind="ev" data-k="courseCert" data-f="ev:courseCert" value="' + esc(ev.courseCert) + '" placeholder="Certification number" autocomplete="off"' + dis + '></div>' +
     '</div>' + raceFormatHTML() + '</section>' +
+    importBandHTML() +
     idBandHTML() +
     '<section class="band noprint"><h2 class="sec-h">' + (inHeats() ? 'This race' : 'Race') + '</h2>' + raceSetupHTML() + '<div class="fields">' +
       '<div class="field"><label for="f-rec">Recorder</label><input id="f-rec" data-bind="ev" data-k="recorder" data-f="ev:recorder" value="' + esc(ev.recorder) + '" placeholder="Recorder name"' + dis + '></div>' +
@@ -6307,6 +6320,380 @@ function openPaste(){
       toast(added + (added === 1 ? ' athlete added' : ' athletes added') + (skipped ? '. ' + skipped + (skipped === 1 ? ' line' : ' lines') + ' skipped (each needs a hip/lane # or bib #, and a name).' : '.'));
     }
   });
+}
+/* Meet-program parsers: taken from the Track Officials app (HY-TEK Meet Program, AthleticNET, DirectAthletics MeetPro). One change: an "Age" column (masters meets) is recognised like Year, so ages are not read as part of the name. */
+var MeetParse = (function(){
+const TIME_RE=/\b\d{1,2}:\d{2}\s*[AaPp]\.?\s?[Mm]\.?(?![a-z])/;
+function cleanTime(t){return String(t||"").replace(/^(Start(?:ing)?\s*Time|Time|Starts?|Begins?)\s*[:\-–]?\s*/i,"").replace(/^[⏰◷⧗⌚⊙○●•·|@\-–—:\s]+/,"").replace(/\s+/g," ").trim()}
+function dropGrades(events){events.forEach(e=>e.sections.forEach(s=>s.lanes.forEach(l=>{delete l.year})));return events}
+/* Turn an HTML report into the plain-text layout the parser reads. <pre> blocks keep their text; tables become padded columns. */
+function htmlToText(root){
+  const out=[];const BLOCK=/^(P|DIV|H[1-6]|LI|SECTION|ARTICLE|HEADER|CENTER|CAPTION|TITLE|FONT|SPAN|B|STRONG)$/;
+  const clean=t=>t.replace(/ /g," ").replace(/[ \t]+/g," ").trim();
+  const table=tb=>{
+    const rows=[...tb.rows].map(r=>[...r.cells].map(c=>({t:clean(c.textContent),span:c.colSpan||1})));
+    if(!rows.length) return;
+    const widths=[];rows.forEach(r=>{let i=0;r.forEach(c=>{if(c.span===1)widths[i]=Math.max(widths[i]||0,c.t.length);i+=c.span})});
+    rows.forEach(r=>{
+      if(r.length===1||r.every((c,k)=>k===0||!c.t)){const t=r.map(c=>c.t).join(" ").trim();if(t)out.push(t);return}
+      let line="",i=0;r.forEach(c=>{let w=0;for(let k=0;k<c.span;k++)w+=(widths[i+k]||0)+4;line+=c.t.padEnd(w);i+=c.span});
+      out.push((/^\d/.test(r[0].t)?"  ":"")+line.replace(/\s+$/,""));
+    });
+  };
+  const walk=n=>{
+    for(const c of n.childNodes){
+      if(c.nodeType===3){const t=clean(c.textContent);if(t)out.push(t);continue}
+      if(c.nodeType!==1) continue;
+      const tag=c.tagName;
+      if(tag==="SCRIPT"||tag==="STYLE") continue;
+      if(tag==="PRE"){c.textContent.replace(/\r/g,"").split("\n").forEach(l=>out.push(l));continue}
+      if(tag==="TABLE"){table(c);continue}
+      if(tag==="BR"){out.push("");continue}
+      const kids=[...c.children];
+      if(kids.length>=3&&kids.every(k=>!k.children.length||(k.children.length===1&&!k.children[0].children.length&&/^(A|SPAN|B|STRONG|I|EM|SMALL)$/.test(k.children[0].tagName)))&&!/^(UL|OL|SELECT|NAV)$/.test(tag)){
+        const cells=kids.map(k=>clean(k.textContent));if(cells.filter(Boolean).length>=2){const line=cells.join("    ").replace(/\s+$/,"");out.push((/^\d/.test(cells[0])?"  ":"")+line);continue}}
+      if(BLOCK.test(tag)&&!c.querySelector("table,pre,p,div,h1,h2,h3,h4,h5,h6,br")){const t=clean(c.textContent);if(t)out.push(t);continue}
+      walk(c);
+    }
+  };
+  walk(root);return out.join("\n");
+}
+/* MeetPro web pages: index.html (event list) and start_list_#.html (one event's lane table). */
+function parseMeetProHtml(doc){
+  const txt=el=>(el?el.textContent:"").replace(/ /g," ").replace(/\s+/g," ").trim();
+  const meet={name:"",date:"",venue:""};
+  const hdr=doc.querySelector(".home-link-hdr");if(hdr) meet.name=txt(hdr);
+  const h3=hdr&&hdr.closest("h3");if(h3){for(const sp of h3.querySelectorAll("span")){const t=txt(sp);if(/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(t)){meet.date=t;break}}}
+  if(!meet.name){const ti=txt(doc.querySelector("title")).replace(/\s*\|\s*MeetPro.*$/i,"");meet.name=ti}
+  const events=new Map();
+  doc.querySelectorAll("table.events-table tr").forEach(tr=>{
+    const n=txt(tr.querySelector(".event-num")),name=txt(tr.querySelector("td.event"));
+    if(/^\d+$/.test(n)&&name&&!events.has(+n)){const tc=[...tr.querySelectorAll("td")].map(txt).find(x=>TIME_RE.test(x)&&x.length<40);events.set(+n,Object.assign({num:+n,name,sections:[]},tc?{time:cleanTime(tc)}:{}))}
+  });
+  const H=/^(Section|Heat|Flight)\s+(\d+)(?:\s+of\s+(\d+))?\b\s*(.*)$/i,RD=/^(Finals?|Prelims?|Preliminaries|Semi-?finals?|Quarter-?finals?|Trials|Timed Finals?|Round \d+)$/i;
+  let ev=null,pendSec=null,round="";
+  for(const el of doc.body.querySelectorAll("*")){
+    if(el.matches(".event-start-list-hdr,h1,h2,h3,h4")&&!el.matches(".text-muted")){
+      const m=txt(el).match(/^#\s*(\d+)\s+(.+?)(?:\s+Start List)?$/i);
+      if(m){const num=+m[1];let name=m[2].trim();const hm=name.match(TIME_RE);let ht="";if(hm){const i=name.search(/\s[-–|·@]?\s*((Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*,?\s+)?[^\s]*\s*\d{1,2}:\d{2}/i);ht=cleanTime(i>0?name.slice(i):hm[0]);name=(i>0?name.slice(0,i):name.replace(hm[0],"")).replace(/[\s\-–|·@]+$/,"").trim()}
+        ev=events.get(num)||{num,name,sections:[]};ev.name=ev.name||name;if(ht&&!ev.time)ev.time=ht;ev.sections=[];events.set(num,ev);pendSec=null;round="";continue}
+    }
+    if(el.matches("table.start-list-table")&&ev){
+      const n=ev.sections.length+1;const sec=pendSec||{num:n,of:null,kind:"Section",label:round};pendSec=null;sec.lanes=[];
+      el.querySelectorAll("tbody tr").forEach(tr=>{
+        const c=k=>txt(tr.querySelector("td."+k));
+        const first=txt(tr.querySelector("td"));
+        let name=c("athlete")||c("name"),team=c("team")||c("school"),relay=c("relay");
+        if(!name&&team&&(relay||/relay/i.test(ev.name))) name=team+(relay?" "+relay:"");
+        if(!name) return;
+        const laneTxt=c("lane")||c("pos")||c("order")||first;
+        sec.lanes.push({lane:/^\d+$/.test(laneTxt)?+laneTxt:laneTxt,bib:c("comp")||c("bib"),name,year:c("year")||c("yr"),team,seed:c("seed")||c("mark")});
+      });
+      if(sec.lanes.length) ev.sections.push(sec);
+      continue;
+    }
+    if(el.children.length===0||el.matches("h1,h2,h3,h4,h5,caption")){
+      const t=txt(el);let m;
+      if(t&&(m=t.match(H))){pendSec={num:+m[2],of:m[3]?+m[3]:null,kind:m[1][0].toUpperCase()+m[1].slice(1).toLowerCase(),label:m[4]||round}}
+      else if(t&&RD.test(t)) round=t;
+      else if(t&&ev&&!ev.sections.length&&!ev._ownTime&&TIME_RE.test(t)&&t.length<60&&!el.closest("table")){ev.time=cleanTime(t);ev._ownTime=true}
+    }
+  }
+  const list=[...events.values()].sort((a,b)=>a.num-b.num);
+  list.forEach(e=>{e.sections.sort((a,b)=>a.num-b.num);const N=e.sections.length;e.sections.forEach(s=>{if(!s.of&&N>1)s.of=N;s.lanes.sort((a,b)=>(+a.lane||0)-(+b.lane||0))})});
+  list.forEach(e=>delete e._ownTime);dropGrades(list);
+  return {meet,events:list,source:"meetpro-html"};
+}
+function parseMany(texts){
+  const results=texts.map(t=>parseHytek(t));
+  const meet={name:"",date:"",venue:""};const events=new Map();
+  for(const r of results){
+    if(!meet.name&&r.meet.name&&r.meet.name!=="Meet") meet.name=r.meet.name;
+    if(!meet.date&&r.meet.date) meet.date=r.meet.date;
+    if(!meet.venue&&r.meet.venue) meet.venue=r.meet.venue;
+    for(const e of r.events){
+      const cur=events.get(e.num);
+      if(!cur) events.set(e.num,JSON.parse(JSON.stringify(e)));
+      else{if(!cur.name&&e.name)cur.name=e.name;if(e.time&&(!cur.time||e.sections.length))cur.time=e.time;if(e.sections.length&&(!cur.sections.length||e.sections.reduce((a,s)=>a+s.lanes.length,0)>cur.sections.reduce((a,s)=>a+s.lanes.length,0)))cur.sections=JSON.parse(JSON.stringify(e.sections))}
+    }
+  }
+  return {meet:Object.assign(meet,{name:meet.name||"Meet"}),events:[...events.values()].sort((a,b)=>a.num-b.num)};
+}
+function parseHytek(raw){
+  let text=raw;
+  if(/<\s*(pre|html|body|p|table|div|h\d)\b/i.test(raw)){const d=new DOMParser().parseFromString(raw,"text/html");
+    if(d.body&&d.querySelector("table.start-list-table,table.events-table")) return parseMeetProHtml(d);
+    text=d.body?htmlToText(d.body):raw}
+  const lines=text.replace(/\r/g,"").replace(/ /g," ").split("\n");
+  const head=[];const events=new Map();let ev=null,sec=null,cols=null,last=null,round="";
+  const mark=/\s((?:\d+:)?\d+\.\d+[a-zA-Z]*|\d+-\d+(?:\.\d+)?|\d+\.\d+m|NT|NM|NH|ND|SCR)\s*$/;
+  for(const line of lines){
+    const t=line.trim();
+    if(!t||/^=+$/.test(t)||/^-{5,}$/.test(t)) continue;
+    if(/^Licensed to/i.test(t)||/HY-TEK/i.test(t)||/^(DirectAthletics\s+)?MeetPro\b/i.test(t)) continue;
+    if(/^(Start Lists?|Heat Sheets?)$/i.test(t)) continue;
+    if(/^Meet Program$/i.test(t)) continue;
+    if(/^Athletic\s*\.?\s*NET$|^athletic\.net$|^Page \d+( of \d+)?$|^Printed\b/i.test(t)) continue;
+    if(!ev&&/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun),\s+\w{3}\s+\d{1,2},\s+\d{1,2}:\d{2}\s*[ap]m$/i.test(t)) continue;
+    let m;
+    if((m=t.match(/^Event\s+(\d+)\s+(.+)$/i))||(m=t.match(/^#\s*(\d+)\s+(.+)$/))){
+      const num=+m[1];const hm=m[2].match(TIME_RE);let ht="";
+      if(hm){const i=m[2].search(/(\s{2,}|\s[-–|·@]\s|\s)((Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*\.?,?\s+([A-Z][a-z]{2,8}\.?\s+\d{1,2},?\s+)?|\d{1,2}\/\d{1,2}(\/\d{2,4})?\s+)?\d{1,2}:\d{2}\s*[AaPp]/);ht=cleanTime(i>=0?m[2].slice(i):hm[0])}
+      const name=(hm?m[2].slice(0,Math.max(0,m[2].search(/(\s{2,}|\s[-–|·@]\s|\s)((Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*\.?,?\s+([A-Z][a-z]{2,8}\.?\s+\d{1,2},?\s+)?|\d{1,2}\/\d{1,2}(\/\d{2,4})?\s+)?\d{1,2}:\d{2}\s*[AaPp]/))||m[2].length):m[2]).replace(/\s*\.\.\.\s*\(.*\)$/,"").replace(/\s{2,}.*$/,"").replace(/[\s\-–|·@]+$/,"").trim();
+      ev=events.get(num);if(!ev){ev={num,name,sections:[]};events.set(num,ev)}if(ht&&!ev.time)ev.time=ht;
+      sec=null;cols=null;last=null;round="";continue;
+    }
+    if(ev&&!sec&&TIME_RE.test(t)&&t.length<60&&!/^\d{1,2}\s/.test(t)&&!/\b(record|advance)\b/i.test(t)){
+      const rm=t.match(/^(Finals?|Prelims?|Preliminaries|Semi-?finals?|Quarter-?finals?|Trials|Timed Finals?|Round \d+)\b\s*[-–:·|,]?\s*(.+)$/i);
+      if(rm){round=rm[1];ev.time=cleanTime(rm[2])}else ev.time=cleanTime(t);continue}
+    if(ev&&!sec&&/\badvance\b|\bqualif/i.test(t)&&!/^\s*\d/.test(line)){ev.note=t;continue}
+    if(ev&&!sec&&/^(Meet|Facility|Stadium|District|State|League|Conference|National|School|Championship)\s+(Record\s+)?((?:\d+:)?\d+[.:-]\d+)/i.test(t)){continue}
+    if(ev&&!cols&&/^(Finals?|Prelims?|Preliminaries|Semi-?finals?|Quarter-?finals?|Trials|Timed Finals?|Heats?|Round \d+)$/i.test(t)){round=t;continue}
+    if(!ev){if(!head.includes(t)) head.push(t);continue}
+    if(head.includes(t)) continue;
+    if(/\b(Name|Team|Athlete)\b/.test(line)&&/\b(Seed|Mark|Entry|Finals|Prelims|Year|Age|Gr|Grade|Yr|School|Relay|Lane|Pos)\b/.test(line)){
+      const at=w=>{const r=new RegExp("\\b"+w+"\\b").exec(line);return r?r.index:-1};
+      const yr=["Year","Age","Grade","Gr","Yr"].map(at).find(x=>x>=0);
+      cols={name:at("Name")>=0?at("Name"):at("Athlete"),year:yr===undefined?-1:yr,team:at("Team")>=0?at("Team"):at("School"),seed:at("Seed"),relay:at("Relay")};
+      if(cols.name<0) cols.name=cols.team;continue;
+    }
+    if((m=t.match(/^(Section|Heat|Flight)\s+(\d+)(?:\s+of\s+(\d+))?\s*(.*)$/i))){
+      const num=+m[2];sec=ev.sections.find(s=>s.num===num);
+      if(!sec){sec={num,of:m[3]?+m[3]:null,kind:m[1][0].toUpperCase()+m[1].slice(1).toLowerCase(),label:(m[4]||"").trim()||round,lanes:[]};ev.sections.push(sec)}
+      last=null;continue;
+    }
+    if(/^\s*\d\)\s/.test(line)&&last){
+      const parts=t.split(/\s*\d\)\s+/).map(x=>x.trim()).filter(Boolean);
+      last.members=(last.members||[]).concat(parts);continue;
+    }
+    if((m=line.match(/^\s*(\d{1,2})(\s|$)/))){
+      if(!sec){sec={num:1,of:null,kind:"Section",label:round,lanes:[]};ev.sections.push(sec)}
+      let s=line.replace(/\s+$/,"");let seed="";
+      const sm=s.match(mark);if(sm&&(!cols||sm.index>=(cols.team>0?cols.team:0))){seed=sm[1];s=s.slice(0,sm.index)}
+      let lane,bib="",name="",year="",team="";
+      if(cols&&cols.name>0){
+        const pre=s.slice(0,cols.name).trim().split(/\s+/);
+        lane=+pre[0];bib=pre[1]||"";
+        const yEnd=cols.team>cols.name?cols.team:s.length;
+        if(cols.year>cols.name){name=s.slice(cols.name,cols.year).trim();year=s.slice(cols.year,yEnd).trim()}
+        else name=s.slice(cols.name,yEnd).trim();
+        if(cols.team>cols.name) team=s.slice(cols.team).trim();
+        else if(cols.team>=0&&cols.team===cols.name){team=name;}
+        if(cols.relay>0&&cols.team>=0&&cols.name===cols.team){team=s.slice(cols.team,cols.relay).trim();const rl=s.slice(cols.relay).trim();name=team+(rl?" "+rl:"");}
+      }else{
+        const p=s.trim().split(/\s{2,}/);lane=+p[0].split(/\s+/)[0];
+        const p0=p[0].split(/\s+/);bib=p0[1]||"";name=p[1]||"";if(!bib){const bm=name.match(/^(\d+)\s+(.+)$/);if(bm){bib=bm[1];name=bm[2]}}
+        const rest=p.slice(2);const YR=/^(\d{1,2}|FR|SO|JR|SR|Fr|So|Jr|Sr|\d{4})$/;
+        if(rest.length&&YR.test(rest[0])){year=rest.shift()}
+        team=rest.length?rest.join(" "):"";if(team===name)team="";
+      }
+      if(!name&&!team) continue;
+      last={lane,bib,name,year,team,seed};sec.lanes.push(last);continue;
+    }
+  }
+  const list=[...events.values()].sort((a,b)=>a.num-b.num);
+  list.forEach(e=>{e.sections.sort((a,b)=>a.num-b.num);e.sections.forEach(s=>s.lanes.sort((a,b)=>a.lane-b.lane))});dropGrades(list);
+  const DR=/^\d{1,2}\/\d{1,2}\/\d{2,4}$/;let date="";const rest=[];
+  const MON={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
+  const wordDate=x=>{const m=x.match(/\b([A-Z][a-z]{2,8})\.?\s+(\d{1,2})\b.*?\b(\d{4})\b/);if(!m)return "";const mo=MON[m[1].slice(0,3).toLowerCase()];return mo?`${mo}/${+m[2]}/${m[3]}`:""};
+  for(const h of head){if(!date&&DR.test(h)){date=h;continue}
+    if(h.includes("|")){const parts=h.split("|").map(x=>x.trim());const di=parts.findIndex(x=>wordDate(x)||DR.test(x));if(di>=0){if(!date)date=DR.test(parts[di])?parts[di]:wordDate(parts[di]);const other=parts.filter((_,k)=>k!==di).join(" | ");if(other)rest.push(other);continue}}
+    if(!date&&/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*,/.test(h)&&wordDate(h)){date=wordDate(h);continue}const dm=h.match(/^(.*?)\s+-\s+(\d{1,2}\/\d{1,2}\/\d{2,4})$/);if(dm&&!date){date=dm[2];rest.push(dm[1].trim());continue}rest.push(h)}
+  return {meet:{name:rest[0]||"Meet",date,venue:rest[1]||""},events:list};
+}
+function secTitle(s){return `${s.kind||"Section"} ${s.num}${s.of?" of "+s.of:""}`}
+return { parseHytek: parseHytek, parseMany: parseMany, TIME_RE: TIME_RE };
+})();
+/* ---------- Import entries from a meet program (HY-TEK Meet Manager, AthleticNET, DirectAthletics MeetPro) ----------
+   The parser above is copied unchanged from the Track Officials app. Each program event becomes a division and each of
+   its heats a heat (Separate heats by divisions), or every chosen event is merged into the one combined race. It only ever
+   adds: no athlete, division or judge entry is removed, and athletes already listed in a race (same name) are skipped. */
+var IP = null;
+function ipIso(d){
+  var m = /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/.exec(d || ''); if (!m) return '';
+  var y = +m[3]; if (y < 100) y += 2000;
+  return y + '-' + ('0' + m[1]).slice(-2) + '-' + ('0' + m[2]).slice(-2);
+}
+function ipClean(s){ return String(s == null ? '' : s).replace(/\s+/g, ' ').trim(); }
+function ipIsWalk(e){ return /walk/i.test(e.name || ''); }
+function ipCount(e){ return e.sections.reduce(function(n, s){ return n + s.lanes.length; }, 0); }
+// With a meet type chosen, a division name found inside the event title ("Women 40-44 3000 Meter Race Walk") is used as-is.
+function ipDivName(evName){
+  var low = ipClean(evName).toLowerCase(), best = '';
+  divOptions(meet.meetType).forEach(function(o){ if (low.indexOf(o.toLowerCase()) >= 0 && o.length > best.length) best = o; });
+  return best || ipClean(evName);
+}
+function openProgramImport(){
+  if (ro()) return;
+  IP = {texts:[], parsed:null};
+  openDialog({
+    title:'Import entries from a meet program',
+    body:'<p>Load the entries from your meet management software. Nothing changes until you confirm on the preview.</p>' +
+      '<ul class="ip-src"><li><b>HY-TEK Meet Manager:</b> Reports, Meet Program. Save as HTML (.htm) or text (.txt).</li>' +
+      '<li><b>AthleticNET:</b> open the meet&rsquo;s Meet Program and save the page as HTML.</li>' +
+      '<li><b>DirectAthletics MeetPro:</b> start lists saved as .txt, or select index.html plus every start_list_#.html together.</li></ul>' +
+      '<div class="field"><label for="ip-file">Choose file(s)</label><input id="ip-file" type="file" accept=".htm,.html,.txt" multiple></div>' +
+      '<p class="rf-note" id="ip-files" role="status"></p>' +
+      '<div class="field"><label for="ip-ta">Or paste the report text</label><textarea id="ip-ta" placeholder="Event 12  Women 3000 Meter Race Walk&#10;Heat 1 of 2&#10;  1  101  Ann Smith ..." aria-label="Meet program text"></textarea></div>',
+    ok:'Preview',
+    onOk:ipPreviewStep
+  });
+  var d = $('#dialog-root .dlg'); if (d) d.classList.add('wide');
+}
+function ipFiles(fl){
+  var files = Array.prototype.filter.call(fl || [], function(f){ return /\.(html?|txt)$/i.test(f.name); });
+  var msg = $('#ip-files');
+  if (!files.length) { IP.texts = []; if (msg) msg.textContent = fl && fl.length ? 'Choose .htm, .html or .txt files.' : ''; return; }
+  Promise.all(files.map(function(f){ return f.text(); })).then(function(texts){
+    if (!IP) return;
+    IP.texts = texts;
+    var m2 = $('#ip-files'); if (m2) m2.textContent = files.length + (files.length === 1 ? ' file' : ' files') + ' ready: ' + files.map(function(f){ return f.name; }).join(', ');
+  }).catch(function(){ var m3 = $('#ip-files'); if (m3) m3.textContent = 'Could not read the file. Try choosing it again.'; });
+}
+function ipPreviewStep(){
+  if (!IP) return;
+  var ta = $('#ip-ta'), texts = IP.texts.length ? IP.texts : (ta && ta.value.trim() ? [ta.value] : []);
+  if (!texts.length) { toast('Choose a file or paste the report text first.'); return false; }
+  var parsed;
+  try { parsed = texts.length === 1 ? MeetParse.parseHytek(texts[0]) : MeetParse.parseMany(texts); }
+  catch(err) { toast('That file could not be read as a meet program.'); return false; }
+  if (!parsed || !parsed.events.length) { toast('No events found. Use a HY-TEK Meet Program, a MeetPro start list or an AthleticNET Meet Program.'); return false; }
+  IP.parsed = parsed; IP.files = texts.length;
+  ipShowPreview();
+  return false;
+}
+function ipRowHTML(e, i, on){
+  var n = ipCount(e), none = !n;
+  return '<tr><td><input type="checkbox" data-ip-ev="' + i + '" aria-label="Import ' + esc(e.name) + '"' + (on && !none ? ' checked' : '') + (none ? ' disabled' : '') + '></td>' +
+    '<td>' + esc(e.num) + '</td><td>' + esc(e.name) + (e.time ? '<br><small class="muted">' + esc(e.time) + '</small>' : '') + '</td>' +
+    '<td>' + e.sections.length + '</td><td>' + n + (none ? ' <small class="muted">(no start list)</small>' : '') + '</td>' +
+    '<td><input type="text" class="ip-dn" data-ip-dn="' + i + '" value="' + esc(ipDivName(e.name)) + '" aria-label="Division name for ' + esc(e.name) + '"></td></tr>';
+}
+function ipShowPreview(){
+  var P = IP.parsed, walks = [], others = [];
+  P.events.forEach(function(e, i){ (ipIsWalk(e) ? walks : others).push(i); });
+  var anyWalk = walks.length > 0;
+  var head = '<thead><tr><th></th><th>#</th><th>Event</th><th>Heats</th><th>Athletes</th><th>Division name</th></tr></thead>';
+  var pickN = anyWalk ? walks.length : P.events.length;
+  var mode = pickN > 1 ? 'heats' : (inHeats() ? 'heats' : 'combined');
+  var main = (anyWalk ? walks : P.events.map(function(e, i){ return i; })).map(function(i){ return ipRowHTML(P.events[i], i, true); }).join('');
+  var other = anyWalk && others.length ? '<details class="ip-more"><summary>Other events in this program (' + others.length + ')</summary><table class="ip-tbl">' + head + '<tbody>' +
+    others.map(function(i){ return ipRowHTML(P.events[i], i, false); }).join('') + '</tbody></table></details>' : '';
+  var total = P.events.reduce(function(n, e){ return n + ipCount(e); }, 0);
+  var cur = inHeats() ? raceLabel(S.raceId) : 'the race that is open now';
+  openDialog({
+    title:'Choose what to import',
+    body:'<p><b>' + esc(P.meet.name || 'Meet program') + '</b>' + (P.meet.date ? ' &middot; ' + esc(P.meet.date) : '') + (P.meet.venue ? ' &middot; ' + esc(P.meet.venue) : '') +
+      ' &mdash; ' + P.events.length + (P.events.length === 1 ? ' event, ' : ' events, ') + total + ' entries' + (IP.files > 1 ? ' from ' + IP.files + ' files' : '') + '.' +
+      ' <button type="button" class="linkbtn" data-act="ip-back">Choose another file</button></p>' +
+      (anyWalk ? '<p class="rf-note">Race walk events are listed and ticked. Other events are under &ldquo;Other events&rdquo; if you need them.</p>' : '<p class="rf-note">No event name mentions race walk, so every event is listed. Tick the ones to import.</p>') +
+      '<div class="ip-modes" role="radiogroup" aria-label="How to import">' +
+        '<label class="chk"><input type="radio" name="ip-mode" value="heats"' + (mode === 'heats' ? ' checked' : '') + '><span>Separate heats by divisions<small>Each ticked event becomes a division, and each of its heats or sections a heat. Sets up several races at once.</small></span></label>' +
+        '<label class="chk"><input type="radio" name="ip-mode" value="combined"' + (mode === 'combined' ? ' checked' : '') + '><span>One combined race<small>Every ticked event&rsquo;s athletes are merged into the single combined race.</small></span></label></div>' +
+      '<div class="ip-wrap"><table class="ip-tbl">' + head + '<tbody>' + main + '</tbody></table></div>' + other +
+      '<label class="chk ip-opt"><input type="checkbox" id="ip-meta" checked><span>Fill in the meet name, date and location from the program when they are empty</span></label>' +
+      '<label class="chk ip-opt"><input type="checkbox" id="ip-copy" checked><span>New races copy the recorder, officials and settings from ' + esc(cur) + '</span></label>' +
+      '<p class="rf-note">Division names are used in Separate heats by divisions only; edit them here if you want something different from the event title. Nothing is removed: existing divisions with the same name are filled in, and athletes already listed (same name) are skipped.</p>',
+    ok:'Import',
+    onOk:ipCommit
+  });
+  var d = $('#dialog-root .dlg'); if (d) d.classList.add('wide');
+}
+function ipCommit(){
+  if (!IP || !IP.parsed || ro()) return;
+  var P = IP.parsed, mr = document.querySelector('input[name="ip-mode"]:checked'), mode = mr ? mr.value : 'heats', picks = [];
+  Array.prototype.forEach.call(document.querySelectorAll('[data-ip-ev]'), function(cb){
+    if (!cb.checked || cb.disabled) return;
+    var i = +cb.dataset.ipEv, inp = document.querySelector('[data-ip-dn="' + i + '"]');
+    picks.push({ev:P.events[i], div:ipClean(inp ? inp.value : '') || ipDivName(P.events[i].name)});
+  });
+  if (!picks.length) { toast('Tick at least one event to import.'); return false; }
+  var o = {mode:mode, picks:picks, meta:!!($('#ip-meta') && $('#ip-meta').checked), copy:!!($('#ip-copy') && $('#ip-copy').checked), prog:P};
+  IP = null;
+  ipApply(o);
+}
+// The race's saved document, read fresh, so adding athletes to a race that is not open never wipes its officials.
+async function ipLoadRace(id){
+  if (id === 'main' || id === S.raceId) return {race:rc(id).race, isNew:false};
+  var d = null;
+  if (S.mode === 'live' && db) { var snap = await db.doc(phys(racePath(id))).get(); d = snap && snap.exists ? snap.data() : null; }
+  else { var t = LS.get(localKey(racePath(id))); d = t ? jparse(t) : null; }
+  rc(id).race = d ? normRace(d) : blankRace();
+  return {race:rc(id).race, isNew:!d};
+}
+function ipAddAthletes(race, lanes){
+  var have = {}, hips = {}, top = 0, added = 0, dup = 0;
+  race.athletes.forEach(function(a){ have[a.name.trim().toLowerCase()] = 1; var h = a.hip.trim(); if (h) { hips[h] = 1; if (/^\d+$/.test(h)) top = Math.max(top, +h); } });
+  lanes.forEach(function(l, i){
+    var nm = ipClean(l.name); if (!nm) return;
+    if (have[nm.toLowerCase()]) { dup++; return; }
+    have[nm.toLowerCase()] = 1;
+    var hip = /^\d+$/.test(String(l.lane == null ? '' : l.lane).trim()) && +l.lane > 0 ? String(+l.lane) : '';
+    if (!hip || hips[hip]) { hip = String(++top); } else if (/^\d+$/.test(hip)) top = Math.max(top, +hip);
+    hips[hip] = 1;
+    race.athletes.push({id:uid() + race.athletes.length, hip:hip, bib:ipClean(l.bib), name:nm});
+    added++;
+  });
+  return {added:added, dup:dup};
+}
+async function ipApply(o){
+  flushAll();
+  var tpl = JSON.parse(JSON.stringify(pick(rc(S.raceId).race, ['recorder', 'recorderCert', 'judges', 'active', 'supervisory', 'last100', 'dq', 'pit'])));
+  var added = 0, dup = 0, races = 0, newDivs = 0, skippedHeats = 0, skippedDivs = 0, plan = [], i, k;
+  try {
+    if (o.mode === 'combined') {
+      var all = []; o.picks.forEach(function(p){ p.ev.sections.forEach(function(s){ all = all.concat(s.lanes); }); });
+      plan.push({id:'main', lanes:all});
+      meet.raceMode = 'combined';
+    } else {
+      var usedAt = {};
+      o.picks.forEach(function(p){
+        var idx = -1;
+        for (i = 0; i < meet.divCount; i++) if (meet.divisions[i].name.trim().toLowerCase() === p.div.toLowerCase()) { idx = i; break; }
+        if (idx < 0) for (i = 0; i < meet.divCount; i++) if (!meet.divisions[i].name.trim()) { idx = i; break; }
+        if (idx < 0) { if (meet.divCount >= MAXDIV) { skippedDivs++; return; } idx = meet.divCount; meet.divCount++; }
+        var dv = meet.divisions[idx];
+        if (dv.name.trim().toLowerCase() !== p.div.toLowerCase()) {
+          dv.name = p.div; dv.custom = divOptions(meet.meetType).length > 0 && divOptions(meet.meetType).indexOf(p.div) < 0; newDivs++;
+        }
+        var base = usedAt[idx] || 0;
+        p.ev.sections.forEach(function(s, q){
+          var h = base + q + 1;
+          if (h > MAXHEATS) { skippedHeats++; return; }
+          if (h > dv.heats) dv.heats = h;
+          plan.push({id:'d' + (idx + 1) + 'h' + h, lanes:s.lanes});
+        });
+        usedAt[idx] = base + p.ev.sections.length;
+      });
+      meet.raceMode = 'heats';
+    }
+    for (k = 0; k < plan.length; k++) {
+      var lr = await ipLoadRace(plan[k].id);
+      if (lr.isNew && o.copy) Object.assign(lr.race, JSON.parse(JSON.stringify(tpl)));
+      var r = ipAddAthletes(lr.race, plan[k].lanes);
+      added += r.added; dup += r.dup; races++;
+      queuePath(racePath(plan[k].id), 100);
+    }
+  } catch(err) {
+    toast('Could not finish the import. Check the connection and try again; anything already added is kept.');
+    queueMeet(100); render();
+    return;
+  }
+  if (o.meta) {
+    if (!meet.name.trim() && o.prog.meet.name && o.prog.meet.name !== 'Meet') meet.name = o.prog.meet.name;
+    if (!meet.date && ipIso(o.prog.meet.date)) meet.date = ipIso(o.prog.meet.date);
+    if (!meet.location.trim() && o.prog.meet.venue) meet.location = o.prog.meet.venue;
+  }
+  queueMeet(100);
+  if (!syncRace()) render();
+  toast('Imported ' + added + (added === 1 ? ' athlete' : ' athletes') + ' into ' + races + (races === 1 ? ' race' : ' races') + (newDivs ? ', ' + newDivs + (newDivs === 1 ? ' division' : ' divisions') + ' set up' : '') + '.' +
+    (dup ? ' ' + dup + ' already listed.' : '') + (skippedHeats ? ' ' + skippedHeats + ' heats over the limit of ' + MAXHEATS + ' skipped.' : '') + (skippedDivs ? ' ' + skippedDivs + ' events over the limit of ' + MAXDIV + ' divisions skipped.' : ''));
+}
+function importBandHTML(){
+  var dis = ro() ? ' disabled' : '';
+  return '<section class="band noprint"><h2 class="sec-h">Import entries</h2>' +
+    '<p class="off-note">Load a meet program from HY-TEK Meet Manager, AthleticNET or DirectAthletics MeetPro to add athletes from a file instead of typing them. With Separate heats by divisions, each event becomes a division and each heat a heat, so several races are set up at once. Nothing is removed or overwritten.</p>' +
+    '<div class="toolbar"><button class="btn" data-act="import-program"' + dis + '>Import meet program&hellip;</button></div></section>';
 }
 function clearJudge(n){
   S.entries[n] = {};
@@ -7122,6 +7509,8 @@ document.addEventListener('click', function(e){
       break;
     }
     case 'paste': if (!ro()) openPaste(); break;
+    case 'import-program': if (!ro()) openProgramImport(); break;
+    case 'ip-back': openProgramImport(); break;
     case 'sample':
       if (ro()) break;
       if (S.event.athletes.length || hasAnyEntries()) confirmDlg('Replace with sample race?', 'This replaces the athletes, officials and every judge&rsquo;s entries' + (inHeats() ? ' for ' + esc(raceLabel(S.raceId)) : '') + ' on all devices with a sample race.', 'Load sample', loadSample);
@@ -7472,6 +7861,7 @@ document.addEventListener('input', function(e){
 document.addEventListener('change', function(e){
   var t = e.target;
   if (t.id === 'imp-file') { importFile(t); return; }
+  if (t.id === 'ip-file') { if (IP) ipFiles(t.files); return; }
   if (t.dataset && t.dataset.bind === 'pz') { pzTyped(t); return; }
   if (t.dataset && t.dataset.bind === 'ent' && (t.dataset.k === 'y1' || t.dataset.k === 'y2')) {
     var nY = +t.dataset.n, kY = t.dataset.k, aidY = t.dataset.aid, enY = ent(nY, aidY), vY = digits(t.value);
@@ -7546,8 +7936,8 @@ window.addEventListener('resize', fitGrid);
    Start
    ================================================================ */
 // App version shown in the header, just right of "by WalkJudge.com". Bump this on every push: the build number as a
-// decimal, so build 127 was 1.27, build 128 was 1.28, build 131 was 1.31, build 132 was 1.32, build 133 is 1.33, build 134 will be 1.34, and so on.
-var APP_VERSION = '1.33';
+// decimal, so build 127 was 1.27, build 128 was 1.28, build 131 was 1.31, build 132 was 1.32, build 133 was 1.33, build 134 is 1.34, build 135 will be 1.35, and so on.
+var APP_VERSION = '1.34';
 (function init(){
   var verEl = document.getElementById('appver'); if (verEl) verEl.textContent = 'v' + APP_VERSION;
   var h = ''; try { h = (location.hash || '').slice(1); } catch(e){}
