@@ -622,6 +622,25 @@ main{min-width:0}
 /* ---------- Dialog + toast ---------- */
 .scrim{position:fixed;inset:0;background:rgba(8,12,16,.55);z-index:50}
 .dlg{position:fixed;z-index:51;left:50%;top:50%;transform:translate(-50%,-50%);width:min(520px,calc(100vw - 32px));max-height:calc(100vh - 48px);overflow:auto;background:var(--surface);border:1px solid var(--line-strong);border-radius:12px;padding:20px}
+.acc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:12px}
+.acc-card{display:grid;grid-template-columns:132px minmax(0,1fr);gap:14px;align-items:start;padding:12px;background:var(--surface);border:1px solid var(--line);border-radius:10px;break-inside:avoid}
+.acc-card.off{background:var(--surface-2)}
+.acc-qr{padding:4px;width:132px;height:132px;box-sizing:border-box}
+.acc-qr svg{display:block;width:100%;height:100%}
+.acc-info{display:flex;flex-direction:column;gap:3px;min-width:0}
+.acc-t{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.acc-t b{font:700 22px/1.1 var(--cond)}
+.acc-alt{font-size:11px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;padding:2px 8px;border-radius:999px;background:var(--amber-soft,#FBEFD5);color:var(--amber,#B57A0B);border:1px solid currentColor}
+.acc-alt.off{background:var(--surface-2);color:var(--muted)}
+.acc-name{font-size:17px;font-weight:700}
+.acc-cert,.acc-races,.acc-code{font-size:13px}
+.acc-races{display:block;color:var(--muted)}
+.acc-who{list-style:none;margin:2px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.acc-who li b{font-size:16px}
+.acc-act{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.acc-bigqr{background:#fff;border-radius:10px;padding:10px;width:min(320px,100%);margin:0 auto 10px;line-height:0}
+.acc-bigqr svg{width:100%;height:auto}
+@media (max-width:380px){.acc-card{grid-template-columns:1fr}}
 .dlg.wide{width:min(940px,calc(100vw - 32px))}
 .ip-src{margin:0 0 10px;padding-left:18px;font-size:14px;color:var(--muted)}
 .ip-modes{display:flex;flex-direction:column;gap:8px;margin:10px 0}
@@ -756,6 +775,7 @@ main{min-width:0}
   .top{padding-top:6px;padding-bottom:2px}
 }
 @media print{
+  .acc-grid{grid-template-columns:repeat(2,1fr)}
   .noprint,.tabs,.racebar,.top .pill{display:none !important}
   body{background:#fff}
   .mx-wrap{overflow:visible;border:0}
@@ -4762,7 +4782,7 @@ function loadAllLocalRaces(){
   raceList().forEach(function(r){ var t = LS.get(localKey(racePath(r.id))); applyRaceDoc(r.id, t ? jparse(t) : null); });
 }
 function syncOfficialSubs(){
-  var want = !!S.official && inHeats() && S.mode === 'live' && !!db;
+  var want = (!!S.official || S.tab === 'access') && inHeats() && S.mode === 'live' && !!db;
   if (want && !racesSub) {
     racesSub = db.collection(phys('races')).onSnapshot(function(snap){
       var ch = false;
@@ -4770,7 +4790,7 @@ function syncOfficialSubs(){
       if (!syncRace() && ch) scheduleRender();
     }, subErr);
   } else if (!want && racesSub) { try { racesSub(); } catch(e){} racesSub = null; }
-  if (S.official && inHeats() && S.mode === 'local') loadAllLocalRaces();
+  if ((S.official || S.tab === 'access') && inHeats() && S.mode === 'local') loadAllLocalRaces();
 }
 function enterOfficial(o){
   S.official = o.n; S.offToken = o.token;
@@ -5154,7 +5174,7 @@ function pzRowHTML(r, sel, canStart){
 function pzSection(title, rows, sel, canStart){
   return rows.length ? '<h3 class="pz-h">' + title + '<span class="count">' + rows.length + '</span></h3><ul class="pzlist" aria-label="' + title + '">' + rows.map(function(r){ return pzRowHTML(r, sel, canStart); }).join('') + '</ul>' : '';
 }
-function validTab(t){ return t === 'howto' || t === 'setup' || t === 'recorder' || t === 'redcards' || t === 'penalty' || t === 'timer' || /^j(1[01]|[1-9])$/.test(t || ''); }
+function validTab(t){ return t === 'howto' || t === 'setup' || t === 'access' || t === 'recorder' || t === 'redcards' || t === 'penalty' || t === 'timer' || /^j(1[01]|[1-9])$/.test(t || ''); }
 function jtabHTML(n){
   var nm = S.event.judges[n - 1].name, on = isActive(n);
   return '<button class="tab jt' + (on ? '' : ' off') + '" role="tab" aria-selected="' + (S.tab === 'j' + n) + '" data-act="tab" data-tab="j' + n + '" aria-label="' + jtitle(n) + (nm ? ', ' + esc(nm) : '') + (on ? (chiefSheet(n) ? ', supervisory official' : '') : ', not active in this race') + '" title="' + esc((nm || jtitle(n)) + (on ? (chiefSheet(n) ? ' (supervisory)' : '') : ' (not active)')) + '">' + jtag(n) + '</button>';
@@ -5171,7 +5191,7 @@ function renderNav(){
     return;
   }
   var nRC = S.event.athletes.filter(function(a){ return redCount(a.id) > 0; }).length;
-  var base = [['howto','How To'], ['setup','Setup'], ['recorder','Recorder'], ['redcards','Red Cards'], ['penalty','Penalty Zone'], ['timer','Timer Notification']];
+  var base = [['howto','How To'], ['setup','Setup'], ['access','Access'], ['recorder','Recorder'], ['redcards','Red Cards'], ['penalty','Penalty Zone'], ['timer','Timer Notification']];
   var homeBtn = S.acct && S.screen === 'meet' ? '<button type="button" class="tab homebtn" data-act="home" title="' + (S.fromAdmin ? 'Back to the admin screen' : 'Back to your meets') + '">&lsaquo; ' + (S.fromAdmin ? 'Admin' : 'My meets') + '</button>' : '';
   var h = '<div class="tabrow">' + homeBtn + base.map(function(t){
     if (t[0] === 'penalty' && !usePZ()) return '<button type="button" class="tab" role="tab" aria-selected="false" aria-disabled="true" disabled title="Turn on Penalty Zone under Race format on the Setup tab">' + t[1] + '</button>';
@@ -5227,6 +5247,7 @@ function go(id, fromHash){
   S.tab = id;
   S.tableOpen = null;   // a Table-view row left open on one judge's tab should not appear open on another's
   LS.set(KEY + 'tab', id);
+  if (id === 'access' || changed) { if (id === 'access' && !S.official) ensureCodes(); syncOfficialSubs(); }
   if (!fromHash) { try { var hh = hashFor(id); if (location.hash !== '#' + hh) location.hash = hh; } catch(e){} }
   render();
   if (changed) {
@@ -5472,6 +5493,7 @@ function renderView(){
   else if (S.tab === 'redcards') html = redcardsHTML();
   else if (S.tab === 'penalty') html = penaltyHTML();
   else if (S.tab === 'timer') html = timerHTML();
+  else if (S.tab === 'access') html = accessHTML();
   else html = judgeHTML(+S.tab.slice(1));
   setHTML($('#view'), html);
 }
@@ -5486,6 +5508,7 @@ function howtoHTML(){
     '<p class="lead">One shared meet. Set it up on the Setup tab, then the Recorder adds the athletes, nine judges record what they see, and the Recorder and Red Cards tabs update as each entry is made.</p>' +
 
     '<details class="rule"><summary><h3>' + ICON_CHEV + 'Setup<small>Setup tab</small></h3></summary><ul>' +
+      '<li>The Access tab shows every official\u2019s QR code in one place, so officials can scan their code from one screen or a printed page. When different people take the same position in different races, each name is listed with the races they cover.</li>' +
       '<li>Import meet program, on the Setup tab, adds athletes from a HY-TEK Meet Manager, AthleticNET or DirectAthletics MeetPro file (or pasted text). Choose the events to bring in; with Separate heats by divisions, each event becomes a division and each heat a heat, so several races are set up at once. Nothing is removed, and athletes already listed are skipped.</li>' +
       '<li>Every account starts with a Practice Meet (Test Event) already set up, with every official named, a combined race of 10 athletes, and three divisions of 10 athletes each for separate heats. Use it to practice before building your own meet. Judges 6 to 9, AC1, AC2 and the PZM are named but off; turn one on to use that test official. You can archive it; only an admin can delete it.</li>' +
       '<li>Start on the Setup tab. Enter the meet name, date, race distance(s), location, course length and road course certification #, and choose Combined race or Separate heats by divisions.</li>' +
@@ -6689,6 +6712,93 @@ async function ipApply(o){
   toast('Imported ' + added + (added === 1 ? ' athlete' : ' athletes') + ' into ' + races + (races === 1 ? ' race' : ' races') + (newDivs ? ', ' + newDivs + (newDivs === 1 ? ' division' : ' divisions') + ' set up' : '') + '.' +
     (dup ? ' ' + dup + ' already listed.' : '') + (skippedHeats ? ' ' + skippedHeats + ' heats over the limit of ' + MAXHEATS + ' skipped.' : '') + (skippedDivs ? ' ' + skippedDivs + ' events over the limit of ' + MAXDIV + ' divisions skipped.' : ''));
 }
+/* ---------- Access: every official's QR code in one place ----------
+   A code belongs to a position (Judge 1 to 9, AC1, AC2, PZM), not to a person, and opens that position's sheet with every
+   race it is active in. Each race keeps its own judge names, so when different people take the same position in different
+   races the page lists who covers which races beside that position's code. */
+function accRaceText(ids){
+  if (!inHeats()) return '';
+  var by = {}, order = [];
+  ids.forEach(function(id){ var p = raceParts(id); if (!p) return; if (!by[p.d]) { by[p.d] = []; order.push(p.d); } by[p.d].push(p.h); });
+  return order.map(function(d){
+    var hs = by[d], all = hs.length === meet.divisions[d - 1].heats;
+    return divLabel(d) + (all && hs.length === 1 && meet.divisions[d - 1].heats === 1 ? '' : all && hs.length > 1 ? ', all heats' : ', Heat ' + hs.join(', '));
+  }).join('; ');
+}
+function accData(){
+  var ids = inHeats() ? raceList().map(function(r){ return r.id; }) : ['main'], out = [], n;
+  for (n = 1; n <= NJ; n++) {
+    if (isPZM(n) && !usePZ()) continue;
+    var rows = [], missing = 0;
+    ids.forEach(function(id){
+      var x = id === 'main' ? rc('main').race : (RC[id] ? RC[id].race : null);
+      if (!x) { missing++; return; }
+      var j = x.judges[n - 1] || {}, act = n > NMAIN ? x.active[n - 1] === true : x.active[n - 1] !== false;
+      rows.push({id:id, name:ipClean(j.name), cert:ipClean(j.cert), active:act});
+    });
+    var act2 = rows.filter(function(r){ return r.active; }), groups = [], idx = {};
+    act2.forEach(function(r){
+      var k = r.name.toLowerCase();
+      if (!(k in idx)) { idx[k] = groups.length; groups.push({name:r.name, cert:r.cert, ids:[]}); }
+      var g = groups[idx[k]]; g.ids.push(r.id); if (!g.cert && r.cert) g.cert = r.cert;
+    });
+    // an unnamed group next to named ones is only a race nobody has been put on yet
+    var named = groups.filter(function(g){ return g.name; });
+    out.push({n:n, groups:groups, named:named, active:act2.length, total:ids.length, missing:missing,
+      inUse:act2.length > 0, alt:named.length > 1,
+      anyName:rows.some(function(r){ return r.name; }), offNames:rows.filter(function(r){ return !r.active && r.name; })});
+  }
+  return out;
+}
+function accCardHTML(p){
+  var n = p.n, link = S.event.keys[n - 1] ? officialLink(n) : '';
+  var nm = p.named.length === 1 && p.groups.length === 1 ? p.named[0] : null, h = '';
+  if (p.alt || (p.named.length >= 1 && p.groups.length > 1)) {
+    h = '<ul class="acc-who">' + p.groups.map(function(g){
+      return '<li><b' + (g.name ? '' : ' class="muted"') + '>' + esc(g.name || 'Name not set') + '</b>' + (g.cert ? ' <span class="muted">' + esc(g.cert) + '</span>' : '') +
+        (inHeats() ? '<span class="acc-races">' + esc(accRaceText(g.ids)) + '</span>' : '') + '</li>';
+    }).join('') + '</ul>';
+  } else {
+    var g0 = p.groups[0] || (p.offNames[0] ? {name:p.offNames[0].name, cert:p.offNames[0].cert, ids:[]} : {name:'', cert:'', ids:[]});
+    h = '<span class="acc-name' + (g0.name ? '' : ' muted') + '">' + esc(g0.name || 'Name not set') + '</span>' + (g0.cert ? '<span class="muted acc-cert">' + esc(g0.cert) + '</span>' : '') +
+      (inHeats() && p.inUse ? '<span class="acc-races">' + (p.active === p.total ? 'Every race' : esc(accRaceText(g0.ids))) + '</span>' : '');
+  }
+  return '<div class="acc-card' + (p.inUse ? '' : ' off') + '"><div class="qr-img acc-qr">' + (link ? qrSvg(link, 132) : '') + '</div><div class="acc-info">' +
+    '<div class="acc-t"><b>' + jtitle(p.n) + '</b>' + (p.n === 1 ? '<span class="chief">Chief</span>' : '') + (p.alt ? '<span class="acc-alt">Alternates</span>' : '') + (p.inUse ? '' : '<span class="acc-alt off">Not in use</span>') + '</div>' + h +
+    (link ? '<span class="acc-code muted">Code ' + esc(officialCode(n)) + '</span><span class="acc-act noprint"><button type="button" class="btn sm" data-act="acc-big" data-n="' + n + '">Show large</button><button type="button" class="btn sm" data-act="acc-copy" data-n="' + n + '">Copy link</button></span>' : '<span class="muted acc-code">No code yet</span>') +
+    '</div></div>';
+}
+function accessHTML(){
+  var list = accData(), used = list.filter(function(p){ return p.inUse; }), rest = list.filter(function(p){ return !p.inUse; });
+  var missing = list.length ? list[0].missing : 0, keysOk = list.every(function(p){ return !!S.event.keys[p.n - 1]; });
+  var h = '<section class="band"><h2 class="sec-h">Access codes' + (meet.name ? ' &middot; ' + esc(meet.name) : '') + '</h2>' +
+    '<p class="off-note">Each official scans their position&rsquo;s code with their phone&rsquo;s camera. It opens that position&rsquo;s sheet on their device with every race it is officiating. ' +
+    (inHeats() ? 'When different people take the same position in different races, each name is listed with the races they cover; each of them scans the same code. ' : '') +
+    'Anyone who scans a code can record as that position. Replace every code under Official codes on the Setup tab.</p>' +
+    '<div class="toolbar noprint"><button type="button" class="btn sm" data-act="acc-print">Print this page</button></div>' +
+    (S.mode === 'local' ? '<p class="warn">Live sync is not available in this view, so another device would not see this meet.</p>' : '') +
+    (typeof qrcode === 'function' ? '' : '<p class="warn">The QR code library did not load. Use Copy link to send each official their link.</p>') +
+    (!keysOk && ro() ? '<p class="warn">The Recorder has not created the official codes yet.</p>' : '') +
+    (missing && S.mode === 'live' ? '<p class="rf-note">Loading the other races&hellip;</p>' : '') + '</section>';
+  h += '<section class="band"><h2 class="sec-h">Officials in this meet</h2>' +
+    (used.length ? '<div class="acc-grid">' + used.map(accCardHTML).join('') + '</div>' : '<p class="off-note">No official is turned on in any race yet. Turn judges on under Judges in this race on the Setup tab.</p>') + '</section>';
+  if (rest.length) h += '<section class="band noprint"><details class="ip-more"><summary>Positions not in use (' + rest.length + ')</summary><div class="acc-grid" style="margin-top:10px">' + rest.map(accCardHTML).join('') + '</div></details></section>';
+  return h;
+}
+function accShowBig(n){
+  if (!S.event.keys[n - 1]) return;
+  var p = accData().filter(function(x){ return x.n === n; })[0];
+  var names = p ? p.groups.filter(function(g){ return g.name; }).map(function(g){ return esc(g.name) + (inHeats() && p.alt ? ' (' + esc(accRaceText(g.ids)) + ')' : ''); }).join('<br>') : '';
+  openDialog({title:jtitle(n) + (meet.name ? ' · ' + meet.name : ''), ok:'Done', onOk:function(){},
+    body:'<div class="acc-bigqr">' + qrSvg(officialLink(n), 300) + '</div>' + (names ? '<p style="text-align:center"><b>' + names + '</b></p>' : '') +
+      '<p class="rf-note" style="text-align:center">Scan with the official&rsquo;s phone camera to officiate as ' + jtitle(n) + '. Code ' + esc(officialCode(n)) + '</p>'});
+  var d = $('#dialog-root .dlg'); if (d) d.classList.add('acc-dlg');
+}
+function accCopy(n){
+  var url = officialLink(n), done = function(){ toast('Link copied.'); };
+  var fb = function(){ openDialog({title:'Copy this link', ok:'Done', onOk:function(){}, body:'<textarea id="acc-cp" readonly style="min-height:90px">' + esc(url) + '</textarea>'}); var t = $('#acc-cp'); if (t) { t.focus(); t.select(); } };
+  try { if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(done, fb); else fb(); } catch(e){ fb(); }
+}
 function importBandHTML(){
   var dis = ro() ? ' disabled' : '';
   return '<section class="band noprint"><h2 class="sec-h">Import entries</h2>' +
@@ -7511,6 +7621,9 @@ document.addEventListener('click', function(e){
     case 'paste': if (!ro()) openPaste(); break;
     case 'import-program': if (!ro()) openProgramImport(); break;
     case 'ip-back': openProgramImport(); break;
+    case 'acc-big': accShowBig(+b.dataset.n); break;
+    case 'acc-copy': accCopy(+b.dataset.n); break;
+    case 'acc-print': try { window.print(); } catch(er){} break;
     case 'sample':
       if (ro()) break;
       if (S.event.athletes.length || hasAnyEntries()) confirmDlg('Replace with sample race?', 'This replaces the athletes, officials and every judge&rsquo;s entries' + (inHeats() ? ' for ' + esc(raceLabel(S.raceId)) : '') + ' on all devices with a sample race.', 'Load sample', loadSample);
@@ -7936,8 +8049,8 @@ window.addEventListener('resize', fitGrid);
    Start
    ================================================================ */
 // App version shown in the header, just right of "by WalkJudge.com". Bump this on every push: the build number as a
-// decimal, so build 127 was 1.27, build 128 was 1.28, build 131 was 1.31, build 132 was 1.32, build 133 was 1.33, build 134 is 1.34, build 135 will be 1.35, and so on.
-var APP_VERSION = '1.34';
+// decimal, so build 127 was 1.27, build 128 was 1.28, build 131 was 1.31, build 132 was 1.32, build 133 was 1.33, build 134 was 1.34, build 135 is 1.35, build 136 will be 1.36, and so on.
+var APP_VERSION = '1.35';
 (function init(){
   var verEl = document.getElementById('appver'); if (verEl) verEl.textContent = 'v' + APP_VERSION;
   var h = ''; try { h = (location.hash || '').slice(1); } catch(e){}
