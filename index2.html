@@ -6287,6 +6287,14 @@ function athHasEntries(id){
 function splitPasteLine(line){
   if (line.indexOf('\t') >= 0) return line.split('\t').map(function(p){ return p.trim(); });
   if (/ {2,}/.test(line.trim())) { var bySpace = line.trim().split(/ {2,}/); if (bySpace.length > 1) return bySpace.map(function(p){ return p.trim(); }); }
+  var t = line.trim();
+  // single spaces only ("11 1101 Ann Smith"): leading numbers are the hip/bib, the rest is the name
+  if (/^\d+\s+\S/.test(t)) {
+    var tk = t.split(/\s+/), cells = [];
+    while (cells.length < 2 && tk.length > 1 && /^\d+$/.test(tk[0])) cells.push(tk.shift());
+    cells.push(tk.join(' ')); return cells;
+  }
+  if (t.indexOf(',') < 0 && /\s/.test(t) && /^(hip|lane|pos|bib|no\b|number|athlete|name)/i.test(t)) return t.split(/\s+/);   // a header such as "Hip# Bib# Name"
   return line.split(',').map(function(p){ return p.trim(); });
 }
 // Column headers a results website might use, matched case-insensitively against a whole cell. Lane counts the same
@@ -6303,7 +6311,7 @@ function detectPasteHeader(cells){
   });
   return hit ? map : null;
 }
-function openPaste(){
+function openPaste(prefill){
   var hip = useHip(), bib = useBib();
   var fmt = idNouns().join(', ') + ', then the name';
   var ex1 = (hip ? '1&#9;' : '') + (bib ? '201&#9;' : '') + 'Athlete Name', ex2 = (hip ? '2&#9;' : '') + (bib ? '202&#9;' : '') + 'Athlete Name';
@@ -6311,7 +6319,7 @@ function openPaste(){
     title:'Paste athlete list',
     body:'<p>One athlete per line: ' + fmt + '. Separate with tabs or commas. Copying ' + (idCount() + 1 === 3 ? 'three columns' : 'two columns') + ' from a spreadsheet works.</p>' +
       '<p>You can also paste a start list copied from a live results website. If the first line is a header, its columns are matched by name: Lane counts the same as Hip, Bib is kept separately when present, and other columns (team, seed time, and so on) are ignored.' + (inHeats() ? ' This adds to the race currently open; switch races first to bring in another.' : '') + '</p>' +
-      '<textarea id="paste-ta" placeholder="' + ex1 + '&#10;' + ex2 + '" aria-label="Athlete list"></textarea>',
+      '<textarea id="paste-ta" placeholder="' + ex1 + '&#10;' + ex2 + '" aria-label="Athlete list">' + esc(prefill || '') + '</textarea>',
     ok:'Add athletes',
     onOk:function(){
       var text = $('#paste-ta').value, added = 0, skipped = 0, need = idCount(), hdr = null, first = true;
@@ -6580,6 +6588,10 @@ function ipPreviewStep(){
   var parsed;
   try { parsed = texts.length === 1 ? MeetParse.parseHytek(texts[0]) : MeetParse.parseMany(texts); }
   catch(err) { toast('That file could not be read as a meet program.'); return false; }
+  if ((!parsed || !parsed.events.length) && !IP.texts.length) {
+    // not a meet program: treat the text as a plain list of athletes for the race that is open
+    var plain = ta.value; IP = null; openPaste(plain); return false;
+  }
   if (!parsed || !parsed.events.length) { toast('No events found. Use a HY-TEK Meet Program, a MeetPro start list or an AthleticNET Meet Program.'); return false; }
   IP.parsed = parsed; IP.files = texts.length;
   ipShowPreview();
@@ -6801,7 +6813,12 @@ function accCopy(n){
 }
 function importBandHTML(){
   var dis = ro() ? ' disabled' : '';
-  return '<section class="band noprint"><h2 class="sec-h">Import entries</h2>' +
+  var where = inHeats() ? raceLabel(S.raceId) : 'the race';
+  return '<section class="band noprint"><h2 class="sec-h">Athlete entries</h2>' +
+    '<p class="off-note">No meet program? Add athletes by hand or paste a simple list (one athlete per line) into <b>' + esc(where) + '</b>. ' + (inHeats() ? 'Choose the race in the race bar above first; set up divisions and heats under Race format.' : '') + '</p>' +
+    '<div class="toolbar"><button class="btn primary" data-act="setup-add-athlete"' + dis + '>Add athlete</button>' +
+    '<button class="btn" data-act="paste"' + dis + '>Paste athlete list</button></div>' +
+    '<h3 class="sec-h" style="font-size:1rem;margin-top:14px">Import a meet program</h3>' +
     '<p class="off-note">Load a meet program from HY-TEK Meet Manager, AthleticNET or DirectAthletics MeetPro to add athletes from a file instead of typing them. With Separate heats by divisions, each event becomes a division and each heat a heat, so several races are set up at once. Nothing is removed or overwritten.</p>' +
     '<div class="toolbar"><button class="btn" data-act="import-program"' + dis + '>Import meet program&hellip;</button></div></section>';
 }
@@ -7611,6 +7628,7 @@ document.addEventListener('click', function(e){
     case 'dlg-cancel': closeDialog(); break;
     case 'dlg-ok': { var f = dlg && dlg.onOk; var keep = f ? f() === false : false; if (!keep) closeDialog(); break; }
     case 'add-athlete': if (!ro()) addAthlete(true); break;
+    case 'setup-add-athlete': if (!ro()) { go('recorder'); addAthlete(true); } break;
     case 'del-athlete': {
       if (ro()) break;
       var id = b.dataset.aid, a = findAth(id);
@@ -8049,8 +8067,8 @@ window.addEventListener('resize', fitGrid);
    Start
    ================================================================ */
 // App version shown in the header, just right of "by WalkJudge.com". Bump this on every push: the build number as a
-// decimal, so build 127 was 1.27, build 128 was 1.28, build 131 was 1.31, build 132 was 1.32, build 133 was 1.33, build 134 was 1.34, build 135 is 1.35, build 136 will be 1.36, and so on.
-var APP_VERSION = '1.35';
+// decimal, so build 127 was 1.27, build 128 was 1.28, build 131 was 1.31, build 132 was 1.32, build 133 was 1.33, build 134 was 1.34, build 135 was 1.35, build 136 was 1.36, build 137 is 1.37, build 138 will be 1.38, and so on.
+var APP_VERSION = '1.37';
 (function init(){
   var verEl = document.getElementById('appver'); if (verEl) verEl.textContent = 'v' + APP_VERSION;
   var h = ''; try { h = (location.hash || '').slice(1); } catch(e){}
