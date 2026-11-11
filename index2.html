@@ -4398,8 +4398,8 @@ async function collectMeet(map){
   return out;
 }
 // Creates a new meet in this account from exported data (a backup, another copy of the app, or the original single meet).
-async function writeMeetData(data){
-  var uid = S.acct.uid, id = newId('m', 11), code = newId('', 5), now = new Date().toISOString();
+async function writeMeetData(data, ownerUid){
+  var uid = ownerUid || S.acct.uid, id = newId('m', 11), code = newId('', 5), now = new Date().toISOString();
   var base = 'cfg/' + uid + '/meets/' + id, ent = 'ent/' + id;
   for (var k = 0; k < 5; k++) { var ex = await db.doc('join/' + code).get(); if (!(ex && ex.exists)) break; code = newId('', 5); }
   await db.doc(base).set({name:str(data.name), date:str(data.date), created:now, archived:false, archivedAt:'', code:code});
@@ -4415,6 +4415,21 @@ async function writeMeetData(data){
   }
   await db.doc('join/' + code).set({owner:uid, meetId:id});
   return id;
+}
+// Admin: bring an exported meet file into another account, as a new meet (new id and join code) on that account's My meets.
+async function adminImportFile(input){
+  var uidT = S.admImpUid, f = input.files && input.files[0]; input.value = ''; S.admImpUid = '';
+  if (!f || !uidT || !S.isAdmin || !S.canWrite || !db) return;
+  var a = (S.adminAccounts || []).filter(function(x){ return x.uid === uidT; })[0], who = a ? (a.name || a.email || 'that account') : 'that account';
+  try {
+    var text = await new Promise(function(res, rej){ var r = new FileReader(); r.onload = function(){ res(String(r.result)); }; r.onerror = rej; r.readAsText(f); });
+    var data = JSON.parse(text);
+    if (!data || data.kind !== 'race-walk-meet' || !data.main || typeof data.main !== 'object') { toast('That file is not a meet export.'); return; }
+    toast('Importing the meet into ' + who + '.');
+    await writeMeetData(data, uidT);
+    toast('Meet imported into ' + who + '\u2019s account. They will see it on My meets.');
+    if (S.adminSel === uidT) adminOpenAccount(uidT);
+  } catch(e){ toast('The meet could not be imported into that account.'); }
 }
 async function importLegacy(){
   toast('Importing the meet.');
@@ -4623,6 +4638,7 @@ function adminAccountRowHTML(a){
   return '<li class="mcard admin-row' + (a.suspended ? ' susp' : '') + '"><div class="mc-main"><b class="mc-name">' + (esc(a.name) || 'Unnamed account') + (isAdm ? ' <span class="jchip ac" title="Admin">A</span>' : '') + (a.suspended ? ' <span class="stx dq" title="Suspended">Suspended</span>' : '') + '</b>' +
     '<span class="mc-sub">' + (a.email ? esc(a.email) : 'No email shared') + ' &middot; <b>' + adminMeetCountText(a.uid) + '</b>' + (a.lastSeen ? ' &middot; last seen ' + esc(fmtDate(a.lastSeen.slice(0, 10))) : '') + '</span></div>' +
     '<div class="mc-act"><button class="btn" data-act="admin-open" data-id="' + esc(a.uid) + '">View meets</button>' +
+    '<button class="btn" data-act="admin-import" data-id="' + esc(a.uid) + '"' + (S.canWrite ? '' : ' disabled') + ' title="Add a meet from an exported meet file to this account">Import meet file</button>' +
     (S.standalone && !isMe ? '<button class="btn" data-act="admin-toggle-admin" data-id="' + esc(a.uid) + '" data-v="' + (isAdm ? '0' : '1') + '"' + (S.canWrite ? '' : ' disabled') + '>' + (isAdm ? 'Remove admin' : 'Make admin') + '</button>' : '') +
     (!isMe ? '<button class="btn" data-act="admin-toggle-suspend" data-id="' + esc(a.uid) + '" data-v="' + (a.suspended ? '0' : '1') + '"' + (S.canWrite ? '' : ' disabled') + '>' + (a.suspended ? 'Lift suspension' : 'Suspend') + '</button>' : '') + '</div></li>';
 }
@@ -4680,10 +4696,11 @@ async function adminClearErrlog(uid){
 }
 function adminHTML(){
   if (!S.isAdmin) return '<div class="home"><p class="lead">You do not have admin access.</p></div>';
-  if (S.adminSel) return '<div class="home">' + adminDetailHTML() + '</div>';
+  var admIn = '<input type="file" id="adm-imp-file" accept=".json,application/json" hidden>';
+  if (S.adminSel) return '<div class="home">' + adminDetailHTML() + admIn + '</div>';
   var q = S.adminSearch.trim().toLowerCase();
   var rows = S.adminAccounts === null ? null : S.adminAccounts.filter(function(a){ return !q || (a.name || '').toLowerCase().indexOf(q) >= 0 || (a.email || '').toLowerCase().indexOf(q) >= 0; });
-  return '<div class="home">' + supportBannerHTML() + '<section class="band"><button type="button" class="btn sm" data-act="admin-back">&lsaquo; Your meets</button>' +
+  return '<div class="home">' + admIn + supportBannerHTML() + '<section class="band"><button type="button" class="btn sm" data-act="admin-back">&lsaquo; Your meets</button>' +
     '<div class="home-h" style="margin-top:10px"><h2 class="sec-h">All accounts' + (S.adminAccounts ? ' <span class="count">' + S.adminAccounts.length + '</span>' : '') + '</h2>' +
     '<div class="mc-act">' + (dl ? '<button class="btn" data-act="admin-export">Export CSV</button>' : '') + '</div></div>' +
     '<input class="qr-link" id="admin-search" placeholder="Search by name or email" value="' + esc(S.adminSearch) + '" data-f="admin-search">' +
@@ -7806,6 +7823,7 @@ document.addEventListener('click', function(e){
     case 'go-admin': goAdmin(); break;
     case 'admin-back': adminBack(); break;
     case 'admin-open': adminOpenAccount(b.dataset.id); break;
+    case 'admin-import': { S.admImpUid = b.dataset.id; var af = $('#adm-imp-file'); if (af) af.click(); break; }
     case 'admin-toggle-admin': adminSetAdmin(b.dataset.id, b.dataset.v === '1'); break;
     case 'admin-toggle-suspend': {
       var susOn = b.dataset.v === '1';
@@ -7992,6 +8010,7 @@ document.addEventListener('input', function(e){
 document.addEventListener('change', function(e){
   var t = e.target;
   if (t.id === 'imp-file') { importFile(t); return; }
+  if (t.id === 'adm-imp-file') { adminImportFile(t); return; }
   if (t.id === 'ip-file') { if (IP) ipFiles(t.files); return; }
   if (t.dataset && t.dataset.bind === 'pz') { pzTyped(t); return; }
   if (t.dataset && t.dataset.bind === 'ent' && (t.dataset.k === 'y1' || t.dataset.k === 'y2')) {
@@ -8067,8 +8086,8 @@ window.addEventListener('resize', fitGrid);
    Start
    ================================================================ */
 // App version shown in the header, just right of "by WalkJudge.com". Bump this on every push: the build number as a
-// decimal, so build 127 was 1.27, build 128 was 1.28, build 131 was 1.31, build 132 was 1.32, build 133 was 1.33, build 134 was 1.34, build 135 was 1.35, build 136 was 1.36, build 137 is 1.37, build 138 will be 1.38, and so on.
-var APP_VERSION = '1.37';
+// decimal, so build 127 was 1.27, build 128 was 1.28, build 131 was 1.31, build 132 was 1.32, build 133 was 1.33, build 134 was 1.34, build 135 was 1.35, build 136 was 1.36, build 137 was 1.37, build 138 is 1.38, build 139 will be 1.39, and so on.
+var APP_VERSION = '1.38';
 (function init(){
   var verEl = document.getElementById('appver'); if (verEl) verEl.textContent = 'v' + APP_VERSION;
   var h = ''; try { h = (location.hash || '').slice(1); } catch(e){}
