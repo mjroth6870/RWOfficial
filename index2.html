@@ -411,7 +411,7 @@ thead .cin{font-weight:600;height:100%;text-align:center;color:var(--ink)}
 .home .toolbar{margin:12px 0 4px}
 .home-h{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:6px}
 .home-h .sec-h{margin:0}
-.acct-card{display:flex;align-items:center;gap:12px;margin:8px 0 12px}
+.acct-card{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:8px 0 12px}
 .avatar{width:44px;height:44px;border-radius:50%;background:var(--surface-2);border:1px solid var(--line);object-fit:cover;flex:none;display:inline-block}
 .acct-who{display:grid;line-height:1.25}
 .acct-email{color:var(--muted);font-size:14px;overflow-wrap:anywhere}
@@ -4064,9 +4064,12 @@ async function ensureGuest(){
     return !!m.id;
   } catch(e){ toast('Could not sign in as a guest. Check the connection.'); return false; }
 }
+// An account holder must have a name: it is shown on their account, on their meets and to any admin. People who signed
+// up before a name was asked for (or by email link, which carries none) are asked for one the next time they sign in.
+function needsName(){ return !!(S.acctDoc && ME && !ME.anon && !str(ME.name).trim()); }
 async function loadAccount(){
   try { var sn = await db.doc('data/users/' + S.acct.uid + '/account').get(); S.acctDoc = !!(sn && sn.exists); applyCustomName(sn && sn.exists ? sn.data() : null); } catch(e){ S.acctDoc = false; }
-  S.screen = S.acctDoc ? 'home' : 'signup';
+  S.screen = S.acctDoc ? (needsName() ? 'name' : 'home') : 'signup';
   if (S.acctDoc) { subscribeMyMeets(); touchAccountDirectory(); subscribeIsAdmin(); subscribeSuspended(); ensureTestMeet(); }
   render();
   checkLegacy();
@@ -4163,8 +4166,12 @@ function subscribeMyMeets(){
 function metaOf(m, over){ var o = {name:m.name, date:m.date, created:m.created, archived:m.archived === true, archivedAt:m.archivedAt || '', code:m.code || ''}; if (m.test === true) o.test = true; return Object.assign(o, over || {}); }
 async function signUp(){
   if (!S.acct || !S.acct.uid) return;
-  try { await db.doc('data/users/' + S.acct.uid + '/account').set({created:new Date().toISOString(), v:1}); }
+  var suName = str(($('#su-name') || {}).value).trim().slice(0, 60);
+  if (!str(ME && ME.name).trim() && !suName) { toast('Enter your name to create your account.'); return; }
+  var suDoc = {created:new Date().toISOString(), v:1}; if (suName) suDoc.customName = suName;
+  try { await db.doc('data/users/' + S.acct.uid + '/account').set(suDoc); }
   catch(e){ toast('Your account could not be created. This view may be read-only.'); return; }
+  if (suName && ME) { ME.rawName = ME.rawName || ME.name || ''; ME.name = suName; }
   S.acctDoc = true; S.screen = 'home'; subscribeMyMeets(); render();
   touchAccountDirectory(); subscribeIsAdmin(); subscribeSuspended(); ensureTestMeet();
 }
@@ -4237,7 +4244,7 @@ function goHome(){
     render();
     return;
   }
-  S.screen = ME && ME.anon ? 'signin' : (S.acctDoc ? 'home' : 'signup'); S.ready = true;
+  S.screen = ME && ME.anon ? 'signin' : (S.acctDoc ? (needsName() ? 'name' : 'home') : 'signup'); S.ready = true;
   try { if (location.hash) location.hash = ''; } catch(e){}
   render();
 }
@@ -4467,13 +4474,21 @@ function acctCardHTML(){
   return '<div class="acct-card">' + (ME && ME.avatarUrl ? '<img class="avatar" src="' + esc(ME.avatarUrl) + '" alt="">' : '<span class="avatar"></span>') +
     '<span class="acct-who"><b>' + (esc(nm) || 'Your account') + '</b><span class="acct-email">' + (em ? esc(em) : 'Email not shared by your organization') + '</span></span>' +
     '<button type="button" class="btn sm" data-act="rename-account" title="Change the name shown on your account">Edit name</button>' +
+    (S.standalone && em && U && U.auth && typeof U.auth.resetPassword === 'function' && !S.screen.match(/^(signup|name)$/) ? '<button type="button" class="btn sm" data-act="set-password" title="We email a link to ' + (ME.hasPassword ? 'change' : 'set') + ' your password">' + (ME.hasPassword ? 'Change password' : 'Set a password') + '</button>' : '') +
     (S.standalone ? '<button type="button" class="btn sm signout" data-act="sign-out">Sign out</button>' : '') + '</div>';
+}
+function nameHTML(){
+  return '<div class="home"><section class="band"><h2 class="sec-h">Add your name</h2>' +
+    '<p class="lead">Your account needs a name. It is shown on your account, on your meets, and to any admin.</p>' + acctCardHTML() +
+    '<label class="dlg-l" for="nm-in">Your name</label><input id="nm-in" class="qr-link" autocomplete="name" maxlength="60" placeholder="First and last name">' +
+    '<div class="toolbar"><button class="btn primary" data-act="save-name">Continue</button></div></section></div>';
 }
 function signupHTML(){
   var em = ME && ME.email;
   return '<div class="home"><section class="band"><h2 class="sec-h">Create your account</h2>' +
     '<p class="lead">' + (ME.hasPassword ? 'You already set a password when you signed in.' : 'Accounts use your sign-in, so there is no password to set up.') + '</p>' + acctCardHTML() +
     '<p class="off-note">' + (em ? 'This email address is your account. The app reads it from your sign-in each time you visit and does not store it.' : 'Your organization does not share email addresses with this page, so your account is tied to your sign-in instead.') + '</p>' +
+    (str(ME && ME.name).trim() ? '' : '<label class="dlg-l" for="su-name">Your name</label><input id="su-name" class="qr-link" autocomplete="name" maxlength="60" placeholder="First and last name">') +
     '<div class="toolbar"><button class="btn primary" data-act="signup"' + (S.canWrite ? '' : ' disabled') + '>Create my account</button></div>' +
     '<p class="off-note">With an account you can set up your own meets, and your previous meets are archived.</p></section>' +
     '<section class="band"><h2 class="sec-h">Officiating a race?</h2><p class="off-note">You do not need an account. Scan the QR code the Recorder gave you, or type its code.</p><div class="toolbar"><button class="btn" data-act="code-dialog">Enter official code</button></div></section>' +
@@ -4498,7 +4513,8 @@ function signinHTML(){
     body = '<p class="lead">Sign in with the email and password you set up.</p>' +
       '<label class="dlg-l" for="si-email">Email address</label><input id="si-email" class="qr-link" type="email" autocomplete="email" placeholder="you@example.org">' +
       '<label class="dlg-l" for="si-pw">Password</label><input id="si-pw" class="qr-link" type="password" autocomplete="current-password" placeholder="Your password">' +
-      '<div class="toolbar"><button class="btn primary" data-act="pw-signin">Sign in</button><button type="button" class="btn sm" data-act="pw-forgot">Forgot password?</button></div>';
+      '<div class="toolbar"><button class="btn primary" data-act="pw-signin">Sign in</button><button type="button" class="btn sm" data-act="pw-forgot">Forgot password?</button></div>' +
+      '<p class="off-note">Signed up with an email link? Use <b>Forgot password?</b> to add a password.</p>';
   } else {
     body = '<p class="lead">We email you a link, so there is no password to remember.</p><label class="dlg-l" for="si-email">Email address</label><input id="si-email" class="qr-link" type="email" autocomplete="email" placeholder="you@example.org"><div class="toolbar"><button class="btn primary" data-act="send-link">Email me a sign-in link</button></div>';
   }
@@ -4732,6 +4748,7 @@ function homeHTML(){
 function accountHTML(){
   if (S.screen === 'signin') return signinHTML();
   if (S.screen === 'signup') return signupHTML();
+  if (S.screen === 'name' || (S.screen === 'home' && needsName())) return nameHTML();
   if (S.screen === 'home') return homeHTML();
   if (S.screen === 'admin') return adminHTML();
   return '<div class="home"><p class="lead">Loading your account.</p></div>';
@@ -7800,6 +7817,19 @@ document.addEventListener('click', function(e){
     case 'other-device-dismiss': presenceDismissSid = presenceOtherSid; S.otherDevice = 0; render(); break;
     case 'code-dialog': openCodeDialog(); break;
     case 'rename-account': openRenameDialog(); break;
+    case 'set-password': {
+      var emSP = ME && ME.email;
+      if (!emSP || !U || !U.auth || typeof U.auth.resetPassword !== 'function') break;
+      var hadPw = !!ME.hasPassword;
+      U.auth.resetPassword(emSP).then(function(){ toast('We emailed a link to ' + (hadPw ? 'change' : 'set') + ' your password. Check ' + emSP + ' and your spam folder.'); }, function(e){ toast((e && e.friendly) || 'The email could not be sent. Try again in a moment.'); });
+      break;
+    }
+    case 'save-name': {
+      var nmV = str(($('#nm-in') || {}).value).trim();
+      if (!nmV) { toast('Enter your name to continue.'); break; }
+      renameAccount(nmV).then(function(ok){ if (ok) { S.screen = 'home'; render(); } });
+      break;
+    }
     case 'board-code-dialog': openBoardCodeDialog(b.dataset.kind); break;
     case 'qr-toggle': S.qrOpen = !S.qrOpen; if (S.qrOpen) ensureCodes(); render(); break;
     case 'qr-copy': {
@@ -7873,7 +7903,7 @@ document.addEventListener('click', function(e){
       var emF = ($('#si-email') || {}).value || ''; emF = emF.trim();
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(emF)) { toast('Enter your email address first.'); break; }
       // Always the same message, whether or not that address actually has a password-based account, so this cannot be used to check who has signed up.
-      U.auth.resetPassword(emF).then(function(){ toast('If that email has a password set, a reset link was sent.'); }, function(){ toast('If that email has a password set, a reset link was sent.'); });
+      U.auth.resetPassword(emF).then(function(){ toast('If that email has an account, we emailed a link to set your password. Check your spam folder too.'); }, function(){ toast('If that email has an account, we emailed a link to set your password. Check your spam folder too.'); });
       break;
     }
     case 'sign-out': signOutNow(); break;
@@ -8086,8 +8116,8 @@ window.addEventListener('resize', fitGrid);
    Start
    ================================================================ */
 // App version shown in the header, just right of "by WalkJudge.com". Bump this on every push: the build number as a
-// decimal, so build 127 was 1.27, build 128 was 1.28, build 131 was 1.31, build 132 was 1.32, build 133 was 1.33, build 134 was 1.34, build 135 was 1.35, build 136 was 1.36, build 137 was 1.37, build 138 is 1.38, build 139 will be 1.39, and so on.
-var APP_VERSION = '1.38';
+// decimal, so build 127 was 1.27, build 128 was 1.28, build 131 was 1.31, build 132 was 1.32, build 133 was 1.33, build 134 was 1.34, build 135 was 1.35, build 136 was 1.36, build 137 was 1.37, build 138 was 1.38, build 139 is 1.39, build 140 will be 1.40, and so on.
+var APP_VERSION = '1.39';
 (function init(){
   var verEl = document.getElementById('appver'); if (verEl) verEl.textContent = 'v' + APP_VERSION;
   var h = ''; try { h = (location.hash || '').slice(1); } catch(e){}
