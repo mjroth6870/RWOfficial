@@ -3537,6 +3537,7 @@ function newToken(){
 }
 function ensureCodes(){
   if (ro()) return false;
+  if (canKeepCodes() && !S.secLoaded) return false;     // wait until the saved codes have been read, so existing codes are never replaced
   var made = false;
   for (var i = 0; i < NJ; i++) if (!S.event.keys[i]) { S.event.keys[i] = newToken(); made = true; }
   if (made) queueMeet(0);
@@ -3643,7 +3644,8 @@ function normMeet(d){
   e.useTimer = d.useTimer !== false;           // the Timer Notification tab is on by default, unless the Recorder turns it off
   e.dqId = d.dqId === 'hip' || d.dqId === 'bib' ? d.dqId : '';   // which number the DQ Board shows, when both are in use
   e.boardRows = boardRowsClamp(toInt(d.boardRows, 0, 200, 0));  // a fixed rows-per-column for the DQ Board; 0 = size it automatically
-  for (var kk = 0; kk < NJ; kk++) e.keys[kk] = Array.isArray(d.keys) ? str(d.keys[kk]).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12) : '';
+  var kd = Array.isArray(d.keys) ? d.keys : (S.secKeys && secMode() ? S.secKeys : null);   // account meets keep the codes in sec/<meet>, not in this public document
+  for (var kk = 0; kk < NJ; kk++) e.keys[kk] = kd ? str(kd[kk]).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12) : '';
   e.shareLink = str(d.shareLink);
   e.statuses = {};
   if (d.statuses && typeof d.statuses === 'object') Object.keys(d.statuses).forEach(function(k){
@@ -3818,7 +3820,17 @@ async function persistNow(path){
         return Promise.resolve();
       }
     }
-    var wr = db.doc(phys(path)).set(data);
+    var isEnt = isEntriesPath(path);
+    if (path === 'event/main' && secMode()) {
+      if (canKeepCodes()) {
+        if (S.secLoaded) {
+          var kj = data.keys || [], kjs = JSON.stringify(kj);
+          if (kjs !== S.secSaved) { await db.doc('sec/' + S.acct.meetId).set({owner:S.acct.owner, codes:kj}); S.secSaved = kjs; S.secKeys = kj.slice(); }
+          delete data.keys;
+        }
+      } else delete data.keys;
+    }
+    var wr = isEnt ? dbSet(path, data) : db.doc(phys(path)).set(data);
     if (ep) announcePresence(ep.race, ep.n);
     return path === 'event/main' && S.acct && S.acct.mine ? wr.then(syncMeta) : wr;
   }
@@ -3887,7 +3899,7 @@ function announcePresence(raceId, n){
   var key = raceId + '/' + n;
   try {
     var path = phys(presencePath(raceId, n));
-    db.doc(path).set({sid: SID, at: new Date().toISOString()}).catch(function(){});
+    dbSet(presencePath(raceId, n), {sid: SID, at: new Date().toISOString()}).catch(function(){});
     if (presenceKey === key) return;
     teardownPresence();
     presenceKey = key;
@@ -3965,7 +3977,9 @@ function applyEntries(id, snap){
 }
 function onMainSnap(snap){
   S.mainExists = !!(snap && snap.exists);
-  var changed = applyMain(snap && snap.exists ? snap.data() : null);
+  var raw = snap && snap.exists ? snap.data() : null;
+  var changed = applyMain(raw);
+  if (canKeepCodes() && !S.secLoaded) loadSecKeys(raw && Array.isArray(raw.keys) ? raw.keys.map(function(k){ return str(k).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12); }) : null);
   if (!S.started) { S.started = true; if (resolveOfficial() === false) return; S.raceId = effectiveRace(); startRace(); return; }   // the first snapshot decides which race to open
   if (S.official) {
     if (!officialValid({n:S.official, token:S.offToken})) { exitOfficial('This official code was replaced. Scan the new QR code.'); return; }
@@ -4181,6 +4195,7 @@ function teardownMeet(){
   metaSub = mainSub = racesSub = null;
   Q = {}; RC = {}; meet = blankMeet();
   S.started = false; S.ready = false; S.official = 0; S.offToken = ''; S.archived = false; S.metaDoc = null;
+  S.secKeys = null; S.secLoaded = false; S.secLoading = false; S.secSaved = ''; S.regP = null; S.regKey = '';
   S.raceId = 'main'; S.qrOpen = false; S.filter = ''; S.copySrc = ''; wantRace = null; S.tab = S.tab || 'howto';
 }
 function openMeet(owner, meetId, legacy){
@@ -4385,6 +4400,7 @@ async function adminDeleteTestMeet(uid, meetId){
     }
     try { var jm = await readCollection(ent + '/judges'); for (var b = 0; b < jm.length; b++) await db.doc(ent + '/judges/' + jm[b].id).delete(); } catch(e){}
     await db.doc(base + '/event/main').delete();
+    try { var ofs = await readCollection('sec/' + meetId + '/officials'); for (var q = 0; q < ofs.length; q++) await db.doc('sec/' + meetId + '/officials/' + ofs[q].id).delete(); await db.doc('sec/' + meetId).delete(); } catch(e){}
     await db.doc(base).delete();
   } catch(e){ toast('That could not be deleted.'); return; }
   logAccountEvent(uid, 'test_meet_deleted', 'Practice event deleted by admin ' + (S.acct ? S.acct.uid : '?') + '.');
@@ -4643,8 +4659,10 @@ async function adminResetCodes(uid, meetId){
   try {
     var sn = await db.doc('cfg/' + uid + '/meets/' + meetId + '/event/main').get();
     if (!(sn && sn.exists)) { toast('That meet could not be found.'); return; }
-    var d = sn.data(); d.keys = d.keys || [];
-    for (var i = 0; i < NJ; i++) d.keys[i] = newToken();
+    var d = sn.data(), nk = [];
+    for (var i = 0; i < NJ; i++) nk[i] = newToken();
+    await db.doc('sec/' + meetId).set({owner:uid, codes:nk});
+    delete d.keys;
     await db.doc('cfg/' + uid + '/meets/' + meetId + '/event/main').set(d);
     toast('New codes created.');
   } catch(e){ toast('That change could not be saved.'); }
@@ -4805,7 +4823,80 @@ function parseCode(t){
   m = /^\s*(?:J?\s*(1[0-2]|[1-9])|AC\s*([12])|(PZM))\s*[- ]?\s*([A-Za-z0-9]{4,12})\s*$/i.exec(t || '');
   return m ? {code:null, n:jn(m[1], m[2], m[3]), token:m[4].toUpperCase(), race:null} : null;
 }
-function officialValid(o){ return !!o && !!S.event.keys[o.n - 1] && S.event.keys[o.n - 1] === o.token; }
+/* ---- v1.40: official codes are kept out of the public meet document ----
+   In an account meet the codes live in sec/<meet> (readable only by the owner and admins). An official proves a code by
+   registering it once under sec/<meet>/officials/<their sign-in id>; the Firestore rules then accept that device's
+   judge entries only while the registered code still matches the current one. */
+function secMode(){ return S.mode === 'live' && !!db && !!S.acct && !!S.acct.meetId && !S.acct.legacy; }
+function canKeepCodes(){ return secMode() && (S.acct.mine || inSupport()); }
+// The Penalty Zone must come before the DQ: if the two are set so it never could, the one just changed wins.
+function fixPZ(changed){
+  var e = S.event;
+  if (!(e.pit > 0) || e.dq > e.pit) return;
+  if (changed === 'pit') { if (e.pit >= 9) { e.pit = 8; e.dq = 9; } else e.dq = e.pit + 1; }
+  else e.pit = e.dq - 1;
+  toast('The Penalty Zone has to come before the DQ, so it was set to ' + (e.pit > 0 ? e.pit + ' red cards (DQ at ' + e.dq + ')' : 'off') + '.');
+}
+function officialValid(o){
+  if (!o) return false;
+  var k = S.event.keys[o.n - 1];
+  if (k) return k === o.token;
+  return secMode() && !S.acct.mine && /^[A-Z0-9]{4,12}$/.test(o.token);     // checked by the server on the first save (see ensureReg)
+}
+function needReg(){ return !!S.official && secMode() && !S.acct.mine && !inSupport() && !S.event.keys[S.official - 1]; }
+function ensureReg(){
+  var key = S.official + '-' + S.offToken + '-' + S.acct.meetId;
+  if (S.regKey === key && S.regP) return S.regP;
+  S.regKey = key;
+  S.regP = db.doc('sec/' + S.acct.meetId + '/officials/' + S.acct.uid).set({n:S.official, tok:S.offToken}).catch(function(e){ S.regP = null; S.regKey = ''; throw e; });
+  return S.regP;
+}
+function isDenied(e){ return !!e && (e.code === 'invalid_argument' || e.code === 'permission-denied'); }
+function officialRevoked(){
+  if (!S.official) return;
+  LS.set(KEY + 'official', '');
+  exitOfficial('This official code was replaced. Scan the new QR code.');
+}
+// Saves one judge document (entries or presence). A device working as an official registers its code first; if the
+// server refuses it, the code was replaced and the device leaves official mode instead of showing a read-only error.
+async function dbSet(path, data){
+  if (needReg()) { try { await ensureReg(); } catch(e){ if (isDenied(e)) { officialRevoked(); return; } throw e; } }
+  try { return await db.doc(phys(path)).set(data); }
+  catch(e){
+    if (needReg() && isDenied(e)) {
+      S.regP = null;
+      try { await ensureReg(); } catch(e2){ if (isDenied(e2)) { officialRevoked(); return; } throw e2; }
+      return db.doc(phys(path)).set(data);
+    }
+    throw e;
+  }
+}
+// Owner or admin: read the saved codes once per meet. Meets saved before v1.40 still carry them in the public document;
+// they are moved into sec/<meet> here and removed from the public document by the save that follows.
+// Runs fn once this device can write to the meet (the meet may still be loading when the codes arrive).
+function whenWritable(fn){
+  var t = 0;
+  (function w(){ if (!canKeepCodes()) return; if (!ro()) { fn(); return; } if (++t < 60) setTimeout(w, 500); })();
+}
+async function loadSecKeys(legacy){
+  if (S.secLoaded || S.secLoading || !canKeepCodes()) return;
+  S.secLoading = true;
+  var m = S.acct.meetId, had = legacy && legacy.some(Boolean);
+  try {
+    var sn = await db.doc('sec/' + m).get();
+    if (!S.acct || S.acct.meetId !== m) return;
+    var ks = sn && sn.exists && sn.data() && Array.isArray(sn.data().codes) ? sn.data().codes : null;
+    if (ks && ks.some(Boolean)) { S.secKeys = ks.slice(0, NJ); S.secSaved = JSON.stringify(S.secKeys); if (had) whenWritable(function(){ queueMeet(0); }); }
+    else if (had) { S.secKeys = legacy.slice(0, NJ); S.secSaved = ''; whenWritable(function(){ queueMeet(0); }); }
+    S.secLoaded = true;
+    if (S.secKeys) {
+      var ch = false;
+      for (var i = 0; i < NJ; i++) { var v = S.secKeys[i] || ''; if (meet.keys[i] !== v) { meet.keys[i] = v; ch = true; } }
+      if (ch) render();
+    } else if (!ro() && ensureCodes()) render();
+  } catch(e){ /* try again on the next snapshot */ }
+  finally { S.secLoading = false; }
+}
 // Races this judge is on the panel for: every race unless the Recorder turned this judge off in it.
 function officiatingIds(n){
   if (isPZM(n) && !usePZ()) return [];
@@ -4832,6 +4923,7 @@ function enterOfficial(o){
   LS.set(KEY + 'official', JSON.stringify({n:o.n, token:o.token, u:inAcct ? S.acct.owner : null, m:inAcct ? S.acct.meetId : null}));
   S.tab = tabFor(o.n); LS.set(KEY + 'tab', S.tab);
   if (o.race && validRace(o.race)) { wantRace = o.race; LS.set(KEY + 'race', o.race); }
+  if (needReg()) ensureReg().catch(function(e){ if (isDenied(e)) officialRevoked(); });     // the server checks the code now, not only on the first save
   syncOfficialSubs();
 }
 function exitOfficial(msg){
@@ -8076,8 +8168,8 @@ document.addEventListener('change', function(e){
   if (!t.dataset || t.dataset.bind !== 'ev' || ro()) return;
   if (t.dataset.k === 'shareLink') { render(); return; }      // shows or clears the "not a web link" note
   if (t.dataset.k === 'divCount') { S.event.divCount = toInt(t.value, 1, MAXDIV, 2); t.value = S.event.divCount; queueMeet(200); if (!syncRace()) render(); return; }
-  if (t.dataset.k === 'dq') { S.event.dq = toInt(t.value, 1, 9, 3); queueRace(200); render(); }
-  else if (t.dataset.k === 'pit') { S.event.pit = toInt(t.value, 0, 9, 0); queueRace(200); render(); }
+  if (t.dataset.k === 'dq') { S.event.dq = toInt(t.value, 1, 9, 3); fixPZ('dq'); queueRace(200); render(); }
+  else if (t.dataset.k === 'pit') { S.event.pit = toInt(t.value, 0, 9, 0); fixPZ('pit'); queueRace(200); render(); }
   else if (t.dataset.k === 'boardRows') { S.event.boardRows = boardRowsClamp(toInt(t.value, 0, 200, 0)); t.value = S.event.boardRows || ''; queueMeet(200); render(); }
 });
 
@@ -8116,8 +8208,8 @@ window.addEventListener('resize', fitGrid);
    Start
    ================================================================ */
 // App version shown in the header, just right of "by WalkJudge.com". Bump this on every push: the build number as a
-// decimal, so build 127 was 1.27, build 128 was 1.28, build 131 was 1.31, build 132 was 1.32, build 133 was 1.33, build 134 was 1.34, build 135 was 1.35, build 136 was 1.36, build 137 was 1.37, build 138 was 1.38, build 139 is 1.39, build 140 will be 1.40, and so on.
-var APP_VERSION = '1.39';
+// decimal, so build 127 was 1.27, build 128 was 1.28, build 131 was 1.31, build 132 was 1.32, build 133 was 1.33, build 134 was 1.34, build 135 was 1.35, build 136 was 1.36, build 137 was 1.37, build 138 was 1.38, build 139 was 1.39, build 140 is 1.40, build 141 will be 1.41, and so on.
+var APP_VERSION = '1.40';
 (function init(){
   var verEl = document.getElementById('appver'); if (verEl) verEl.textContent = 'v' + APP_VERSION;
   var h = ''; try { h = (location.hash || '').slice(1); } catch(e){}
