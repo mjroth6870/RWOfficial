@@ -75,6 +75,10 @@ button[disabled],input[disabled]{cursor:not-allowed}
 .pill.save i{background:var(--yellow)}
 .pill.err{border-color:var(--red);color:var(--red-ink)} .pill.err i{background:var(--red)}
 .pill.boot i{background:var(--line-strong)}
+.awake{display:inline-flex;align-items:center;gap:6px;margin-left:8px;padding:6px 12px;border:1px solid var(--line-strong);border-radius:999px;background:var(--surface);color:inherit;font:inherit;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap}
+.awake svg{width:14px;height:14px;flex:none}
+.awake.on svg{color:#d97706}.awake.off{color:var(--muted)}
+.awake.warn{border-color:var(--yellow);background:rgba(250,204,21,.15)}
 
 /* ---------- Tabs ---------- */
 .tabs{display:flex;flex-direction:column;align-items:stretch;gap:6px;padding:8px 16px 12px}
@@ -5101,9 +5105,10 @@ function fitRedCards(wrap){
   fit.style.height = Math.ceil(naturalH * scale) + 'px';
 }
 function render(){
+  if (S.board || S.pzBoard) wlSync();
   if (S.board) { try { document.title = 'DQ Board' + (meet.name ? ' \u2013 ' + meet.name : ''); } catch(e){} setHTML($('#app'), boardHTML()); layoutBoard(); return; }
   if (S.pzBoard) { try { document.title = 'Penalty Zone Board' + (meet.name ? ' \u2013 ' + meet.name : ''); } catch(e){} setHTML($('#app'), pzBoardHTML()); return; }
-  if (S.screen !== 'meet') { renderAccount(); return; }
+  if (S.screen !== 'meet') { renderAccount(); wlSync(); return; }
   if (S.tab === 'penalty' && S.started && !usePZ() && !S.official) { S.tab = 'recorder'; LS.set(KEY + 'tab', S.tab); }     // turned off while it was open
   if (S.tab === 'timer' && S.started && !useTimer() && !S.official) { S.tab = 'recorder'; LS.set(KEY + 'tab', S.tab); }
   var ui = captureUI();
@@ -5111,7 +5116,50 @@ function render(){
   renderHeader(); renderNav(); renderRaceBar(); renderView();
   fitGrid();
   restoreUI(ui);
+  wlSync();
 }
+
+/* ---------- Keep the screen awake (v1.41) ----------
+   Uses the browser's own Screen Wake Lock (navigator.wakeLock); nothing is loaded from outside the app. The lock is
+   held while a meet or a board is open on screen and dropped when it is not. The browser drops it whenever the page is
+   hidden (another app, locked phone) and may refuse it in low-battery or power-saving mode, so it is asked for again when
+   the page returns or when the user taps the indicator. */
+var WL = {lock:null, busy:false, state:'', warned:false, pref:(function(){ try { return localStorage.getItem('rwo1.awake') !== '0'; } catch(e){ return true; } })()};
+function wlWanted(){ return WL.pref && (S.board || S.pzBoard || (S.screen === 'meet' && S.ready)); }
+function wlPaint(){ try { if (S.screen === 'meet' && !S.board && !S.pzBoard && $('#sync')) renderPill(); } catch(e){} }
+async function wlSync(force){
+  var want = wlWanted();
+  if (!(navigator.wakeLock && navigator.wakeLock.request)) { var u = want ? 'unsupported' : ''; if (u !== WL.state) { WL.state = u; wlPaint(); } return; }
+  if (!want) {
+    var old = WL.lock; WL.lock = null;
+    if (old) { try { await old.release(); } catch(e){} }
+    var st = WL.pref ? '' : 'off'; if (st !== WL.state) { WL.state = st; wlPaint(); }
+    return;
+  }
+  if (WL.lock || WL.busy || document.hidden) return;
+  if (!force && (WL.state === 'denied' || WL.state === 'lost')) return;      // wait for a tap or for the page to come back
+  WL.busy = true;
+  try {
+    var l = await navigator.wakeLock.request('screen');
+    WL.lock = l; WL.state = 'on';
+    l.addEventListener('release', function(){ if (WL.lock === l) { WL.lock = null; WL.state = document.hidden ? 'on' : 'lost'; wlPaint(); } });
+  } catch(e){
+    WL.state = 'denied';
+    if (!WL.warned) { WL.warned = true; toast('Your phone did not keep the screen on. Set Auto-Lock or Screen timeout to the longest time.'); }
+  }
+  WL.busy = false; wlPaint();
+}
+function awakeHTML(){
+  var sun = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
+  var cls, txt, tip;
+  if (!WL.pref) { cls = 'off'; txt = 'Sleep allowed'; tip = 'The screen may turn off on its own. Tap to keep it on while judging.'; }
+  else if (WL.state === 'on') { cls = 'on'; txt = 'Screen on'; tip = 'The screen stays on while this page is open. Tap to turn this off.'; }
+  else if (WL.state === 'unsupported') { cls = 'warn'; txt = 'Screen may sleep'; tip = 'This browser cannot keep the screen on. Set Auto-Lock or Screen timeout to the longest time in the phone settings.'; }
+  else if (WL.state === 'denied' || WL.state === 'lost') { cls = 'warn'; txt = 'Screen may sleep'; tip = 'The phone did not keep the screen on (low battery or power saving). Turn off Low Power Mode or Battery Saver, or set Auto-Lock to the longest time. Tap to try again.'; }
+  else return '';
+  return '<button type="button" class="awake ' + cls + '" data-act="toggle-awake" title="' + esc(tip) + '">' + sun + txt + '</button>';
+}
+document.addEventListener('visibilitychange', function(){ if (!document.hidden) wlSync(true); });
 
 /* ---------- Header ---------- */
 function renderHeader(){
@@ -5130,7 +5178,7 @@ function renderPill(){
   else if (S.save === 'saving') { cls = 'save'; txt = 'Saving'; tip = 'Sending your change to every device.'; }
   else if (S.save === 'error') { cls = 'err'; txt = 'Not saved'; tip = 'The last change did not save. Edit a field to try again.'; }
   else { cls = 'live'; txt = 'Live'; tip = 'Connected. Every entry reaches all open devices immediately.'; }
-  setHTML($('#sync'), '<span class="pill ' + cls + '" title="' + esc(tip) + '"><i></i>' + txt + '</span>');
+  setHTML($('#sync'), '<span class="pill ' + cls + '" title="' + esc(tip) + '"><i></i>' + txt + '</span>' + awakeHTML());
 }
 
 /* ---------- Tabs ---------- */
@@ -8035,6 +8083,11 @@ document.addEventListener('click', function(e){
       b.checked = l100On();
       break;
     }
+    case 'toggle-awake': {
+      if (WL.pref && (WL.state === 'denied' || WL.state === 'lost')) { wlSync(true); break; }      // try again
+      WL.pref = !WL.pref; try { localStorage.setItem('rwo1.awake', WL.pref ? '1' : '0'); } catch(e){}
+      if (WL.pref) WL.state = ''; wlSync(true); wlPaint(); break;
+    }
     case 'toggle-judge': {
       if (ro()) break;
       var tn = +b.dataset.n;
@@ -8208,8 +8261,8 @@ window.addEventListener('resize', fitGrid);
    Start
    ================================================================ */
 // App version shown in the header, just right of "by WalkJudge.com". Bump this on every push: the build number as a
-// decimal, so build 127 was 1.27, build 128 was 1.28, build 131 was 1.31, build 132 was 1.32, build 133 was 1.33, build 134 was 1.34, build 135 was 1.35, build 136 was 1.36, build 137 was 1.37, build 138 was 1.38, build 139 was 1.39, build 140 is 1.40, build 141 will be 1.41, and so on.
-var APP_VERSION = '1.40';
+// decimal, so build 127 was 1.27, build 128 was 1.28, build 131 was 1.31, build 132 was 1.32, build 133 was 1.33, build 134 was 1.34, build 135 was 1.35, build 136 was 1.36, build 137 was 1.37, build 138 was 1.38, build 139 was 1.39, build 140 was 1.40, build 141 is 1.41, build 142 will be 1.42, and so on.
+var APP_VERSION = '1.41';
 (function init(){
   var verEl = document.getElementById('appver'); if (verEl) verEl.textContent = 'v' + APP_VERSION;
   var h = ''; try { h = (location.hash || '').slice(1); } catch(e){}
