@@ -4845,7 +4845,7 @@ function officialValid(o){
   if (!o) return false;
   var k = S.event.keys[o.n - 1];
   if (k) return k === o.token;
-  return secMode() && !S.acct.mine && /^[A-Z0-9]{4,12}$/.test(o.token);     // checked by the server on the first save (see ensureReg)
+  return secMode() && /^[A-Z0-9]{4,12}$/.test(o.token);     // checked by the server on the first save (see ensureReg); the owner needs no code
 }
 function needReg(){ return !!S.official && secMode() && !S.acct.mine && !inSupport() && !S.event.keys[S.official - 1]; }
 function ensureReg(){
@@ -8261,8 +8261,8 @@ window.addEventListener('resize', fitGrid);
    Start
    ================================================================ */
 // App version shown in the header, just right of "by WalkJudge.com". Bump this on every push: the build number as a
-// decimal, so build 127 was 1.27, build 128 was 1.28, build 131 was 1.31, build 132 was 1.32, build 133 was 1.33, build 134 was 1.34, build 135 was 1.35, build 136 was 1.36, build 137 was 1.37, build 138 was 1.38, build 139 was 1.39, build 140 was 1.40, build 141 is 1.41, build 142 will be 1.42, and so on.
-var APP_VERSION = '1.41';
+// decimal, so build 127 was 1.27, build 128 was 1.28, build 131 was 1.31, build 132 was 1.32, build 133 was 1.33, build 134 was 1.34, build 135 was 1.35, build 136 was 1.36, build 137 was 1.37, build 138 was 1.38, build 139 was 1.39, build 140 was 1.40, build 141 was 1.41, build 142 is 1.42, build 143 will be 1.43, and so on.
+var APP_VERSION = '1.42';
 (function init(){
   var verEl = document.getElementById('appver'); if (verEl) verEl.textContent = 'v' + APP_VERSION;
   var h = ''; try { h = (location.hash || '').slice(1); } catch(e){}
