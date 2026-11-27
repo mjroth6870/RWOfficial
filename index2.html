@@ -579,6 +579,9 @@ main{min-width:0}
 .off-in{display:grid;gap:4px;min-width:0}
 .off-in input{width:100%;min-width:0;height:38px;padding:0 8px;border:1px solid var(--line-strong);border-radius:6px;background:var(--surface);font-size:16px}   /* 16px on phones so they do not zoom when a field is tapped */
 .off-note{margin:0;color:var(--muted);font-size:14px;max-width:72ch}
+.linkbtn{background:none;border:0;padding:0;margin:0;font:inherit;color:var(--accent,#0b5cad);text-decoration:underline;cursor:pointer;min-height:24px}
+.linkbtn:hover{text-decoration:none}
+.auth-alt{margin:10px 0 6px;display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;font-size:14px}
 .setup{max-width:1100px}
 .sup{display:flex;align-items:flex-start;gap:10px;padding:8px 12px;border:1px solid var(--line-strong);border-radius:8px;background:var(--surface);cursor:pointer;min-width:0}
 .sup input{width:22px;height:22px;margin:2px 0 0;flex:none;accent-color:var(--ink)}
@@ -3418,7 +3421,8 @@ var S = {
   copySrc: '',                   // race chosen in "Copy officials from"
   standalone: false,             // running on an ordinary web host with Firebase, not inside Claude
   linkSent: '',                  // the email address a sign-in link was just sent to
-  authTab: 'link',               // which sign-in method is shown: 'link' (emailed link), 'in' (password), or 'create' (set a password)
+  authTab: 'in',                 // which sign-in method is shown: 'in' (email and password, the default), 'link' (emailed link), or 'create' (set a password)
+  authEmail: '',                 // the email address typed so far, kept when switching between the sign-in methods
   tableView: false,              // a judge's chosen view on their own tab: list (every call always visible) or the compact Table view; restored from localStorage at startup
   tableOpen: null,               // which athlete's row is expanded in Table view, if any -- an accordion, so at most one at a time
   board: false,                  // this device is showing the DQ Board, not the normal app
@@ -4516,29 +4520,31 @@ function signupHTML(){
 }
 function signinHTML(){
   if (!S.standalone) return '<div class="home"><section class="band"><h2 class="sec-h">Sign in to continue</h2><p class="lead">This page could not tell who you are. Sign in, then reload this page.</p></section></div>';
-  var tab = S.linkSent ? 'link' : (S.authTab || 'link');
-  var tabsHtml = S.linkSent ? '' : '<div class="toolbar">' + [['link', 'Email link'], ['in', 'Sign in with a password'], ['create', 'Create a password']].map(function(t){
-    return '<button type="button" class="btn sm' + (tab === t[0] ? ' primary' : '') + '" data-act="auth-tab" data-v="' + t[0] + '" aria-pressed="' + (tab === t[0]) + '">' + t[1] + '</button>';
-  }).join('') + '</div>';
+  var tab = S.linkSent ? 'link' : (S.authTab || 'in');
+  var em = '<label class="dlg-l" for="si-email">Email address</label><input id="si-email" class="qr-link" type="email" autocomplete="email" placeholder="you@example.org" value="' + esc(S.authEmail || '') + '">';
+  var lb = function(act, v, label){ return '<button type="button" class="linkbtn" data-act="' + act + '"' + (v ? ' data-v="' + v + '"' : '') + '>' + label + '</button>'; };
   var body;
   if (S.linkSent) {
     body = '<p class="lead">Check your inbox.</p><p class="off-note">We sent a sign-in link to <b>' + esc(S.linkSent) + '</b>. Open it on this device to finish. It can take a minute and may land in spam.</p><div class="toolbar"><button class="btn" data-act="link-again">Use a different email</button></div>';
   } else if (tab === 'create') {
-    body = '<p class="lead">Set a password instead of using an emailed link.</p>' +
-      '<label class="dlg-l" for="si-email">Email address</label><input id="si-email" class="qr-link" type="email" autocomplete="email" placeholder="you@example.org">' +
+    body = '<p class="lead">Set a password instead of using an emailed link.</p>' + em +
       '<label class="dlg-l" for="si-pw">Password</label><input id="si-pw" class="qr-link" type="password" autocomplete="new-password" placeholder="At least 6 characters">' +
       '<label class="dlg-l" for="si-pw2">Confirm password</label><input id="si-pw2" class="qr-link" type="password" autocomplete="new-password" placeholder="Type it again">' +
-      '<div class="toolbar"><button class="btn primary" data-act="pw-create">Create account</button></div>';
-  } else if (tab === 'in') {
-    body = '<p class="lead">Sign in with the email and password you set up.</p>' +
-      '<label class="dlg-l" for="si-email">Email address</label><input id="si-email" class="qr-link" type="email" autocomplete="email" placeholder="you@example.org">' +
-      '<label class="dlg-l" for="si-pw">Password</label><input id="si-pw" class="qr-link" type="password" autocomplete="current-password" placeholder="Your password">' +
-      '<div class="toolbar"><button class="btn primary" data-act="pw-signin">Sign in</button><button type="button" class="btn sm" data-act="pw-forgot">Forgot password?</button></div>' +
-      '<p class="off-note">Signed up with an email link? Use <b>Forgot password?</b> to add a password.</p>';
+      '<div class="toolbar"><button class="btn primary" data-act="pw-create">Create account</button></div>' +
+      '<p class="auth-alt">' + lb('auth-tab', 'in', 'Back to sign in') + '</p>';
+  } else if (tab === 'link') {
+    body = '<p class="lead">We email you a link, so there is no password to remember.</p>' + em +
+      '<div class="toolbar"><button class="btn primary" data-act="send-link">Email me a sign-in link</button></div>' +
+      '<p class="auth-alt">' + lb('auth-tab', 'in', 'Sign in with a password instead') + '</p>';
   } else {
-    body = '<p class="lead">We email you a link, so there is no password to remember.</p><label class="dlg-l" for="si-email">Email address</label><input id="si-email" class="qr-link" type="email" autocomplete="email" placeholder="you@example.org"><div class="toolbar"><button class="btn primary" data-act="send-link">Email me a sign-in link</button></div>';
+    body = em +
+      '<label class="dlg-l" for="si-pw">Password</label><input id="si-pw" class="qr-link" type="password" autocomplete="current-password" placeholder="Your password">' +
+      '<div class="toolbar"><button class="btn primary" data-act="pw-signin">Sign in</button></div>' +
+      '<p class="auth-alt">' + lb('pw-forgot', '', 'Forgot password?') + '<span aria-hidden="true">&middot;</span>' + lb('auth-tab', 'link', 'Email me a sign-in link instead') + '</p>' +
+      '<p class="off-note">Signed up with an email link? Use <b>Forgot password?</b> to add a password.</p>' +
+      '<p class="off-note">New here? ' + lb('auth-tab', 'create', 'Create an account') + '</p>';
   }
-  return '<div class="home"><section class="band"><h2 class="sec-h">Sign in</h2>' + tabsHtml + body + '</section>' +
+  return '<div class="home"><section class="band"><h2 class="sec-h">Sign in</h2>' + body + '</section>' +
     '<section class="band"><h2 class="sec-h">Officiating a race?</h2><p class="off-note">You do not need to sign in. Scan the QR code the Recorder gave you, or type its code.</p><div class="toolbar"><button class="btn" data-act="code-dialog">Enter official code</button></div></section>' +
     '<section class="band"><h2 class="sec-h">Watching from a screen?</h2><p class="off-note">Neither board needs an account. Type the meet code shown on its Setup or Penalty Zone tab.</p><div class="toolbar"><button class="btn" data-act="board-code-dialog">View a DQ Board</button><button class="btn" data-act="board-code-dialog" data-kind="pz">View a Penalty Zone Board</button></div></section></div>';
 }
@@ -8020,8 +8026,8 @@ document.addEventListener('click', function(e){
       U.auth.sendLink(em).then(function(){ S.linkSent = em; render(); }, function(){ toast('The email could not be sent. Check the address and try again.'); });
       break;
     }
-    case 'link-again': S.linkSent = ''; render(); break;
-    case 'auth-tab': S.authTab = b.dataset.v; render(); break;
+    case 'link-again': S.linkSent = ''; S.authTab = 'link'; render(); break;
+    case 'auth-tab': { var ae = ($('#si-email') || {}).value; if (ae) S.authEmail = ae.trim(); S.authTab = b.dataset.v; render(); break; }
     case 'pw-create': {
       var emC = ($('#si-email') || {}).value || ''; emC = emC.trim();
       var pwC = ($('#si-pw') || {}).value || '', pwC2 = ($('#si-pw2') || {}).value || '';
@@ -8244,6 +8250,9 @@ document.addEventListener('keydown', function(e){
     if (i === S.event.athletes.length - 1) { e.preventDefault(); addAthlete(true); }
   }
   if (e.key === 'Enter' && t.classList && t.classList.contains('tin')) t.blur();
+  if (e.key === 'Enter' && (t.id === 'si-email' || t.id === 'si-pw' || t.id === 'si-pw2')) {      // Enter submits the sign-in form
+    var sb = document.querySelector('[data-act="pw-signin"],[data-act="pw-create"],[data-act="send-link"]'); if (sb) { e.preventDefault(); sb.click(); }
+  }
 });
 
 window.addEventListener('hashchange', function(){
@@ -8261,8 +8270,8 @@ window.addEventListener('resize', fitGrid);
    Start
    ================================================================ */
 // App version shown in the header, just right of "by WalkJudge.com". Bump this on every push: the build number as a
-// decimal, so build 127 was 1.27, build 128 was 1.28, build 131 was 1.31, build 132 was 1.32, build 133 was 1.33, build 134 was 1.34, build 135 was 1.35, build 136 was 1.36, build 137 was 1.37, build 138 was 1.38, build 139 was 1.39, build 140 was 1.40, build 141 was 1.41, build 142 is 1.42, build 143 will be 1.43, and so on.
-var APP_VERSION = '1.42';
+// decimal, so build 127 was 1.27, build 128 was 1.28, build 131 was 1.31, build 132 was 1.32, build 133 was 1.33, build 134 was 1.34, build 135 was 1.35, build 136 was 1.36, build 137 was 1.37, build 138 was 1.38, build 139 was 1.39, build 140 was 1.40, build 141 was 1.41, build 142 was 1.42, build 143 is 1.43, build 144 will be 1.44, and so on.
+var APP_VERSION = '1.43';
 (function init(){
   var verEl = document.getElementById('appver'); if (verEl) verEl.textContent = 'v' + APP_VERSION;
   var h = ''; try { h = (location.hash || '').slice(1); } catch(e){}
